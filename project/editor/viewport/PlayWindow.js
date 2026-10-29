@@ -23,6 +23,7 @@ import { getAllSpriteAssets, getAllFrameAssets, getAllAudioAssets } from "../../
 import { syncScriptSourcesInSceneData, syncScriptSourcesInScenes } from "../scripting/ScriptSync.js";
 import { editorState, pushLog } from "../state/EditorState.js";
 import { getAllScenesData } from "../../runtime/scene/SceneManager.js";
+import { getAllPrefabs } from "../../runtime/prefabs/PrefabRegistry.js";
 import { notifyPlayWindowChanged } from "../state/FocusScheduler.js";
 import { getEngineSettings } from "../state/EngineSettings.js";
 import { getNavAreaNames } from "../state/NavAreas.js";
@@ -180,7 +181,7 @@ export function openPlayWindow(game) {
   // navAreaNames is the Edit → Nav Areas… name registry (see
   // editor/state/NavAreas.js) — passed through so nav.areaIndex()/
   // nav.areaMask() resolve the same names in Play mode that the editor shows.
-  pendingPayload = { sceneData, allScenes, width, height, spriteAssets, audioAssets, gameFps: getEngineSettings().gameFps, navAreaNames: getNavAreaNames() };
+  pendingPayload = { sceneData, allScenes, width, height, spriteAssets, audioAssets, gameFps: getEngineSettings().gameFps, navAreaNames: getNavAreaNames(), prefabs: getAllPrefabs() };
   playOrigin = resolvePlayOrigin();
 
   if (isPlayWindowOpen()) {

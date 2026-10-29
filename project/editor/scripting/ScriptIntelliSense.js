@@ -724,6 +724,8 @@ const NAV_AGENT_API = [
 const LIFECYCLE_API = [
   { label: "onStart()", detail: "Called once before the first onUpdate", insert: "onStart()", kind: "Function" },
   { label: "onClone()", detail: "Called once for entities created by spawn()", insert: "onClone()", kind: "Function" },
+  { label: "onEnable()", detail: "Pooled objects: called every time pool.get() switches this object on (before onStart the first time, like Unity's OnEnable). Reset your variables here.", insert: "onEnable()", kind: "Function" },
+  { label: "onDisable()", detail: "Pooled objects: called every time this object is released back to its pool. Its wait()/repeat()/tween() timers are cancelled right after.", insert: "onDisable()", kind: "Function" },
   { label: "onUpdate(dt)", detail: "Called every frame", insert: "onUpdate(dt)", kind: "Function" },
   { label: "onFixedUpdate(dt)", detail: "Called at a fixed physics rate", insert: "onFixedUpdate(dt)", kind: "Function" },
   { label: "onMessage(message, sender, data)", detail: "Called when a script message is received", insert: "onMessage(message, sender, data)", kind: "Function" },
@@ -774,6 +776,8 @@ const THIS_SHORTCUTS_BASE = [
   { label: "tag", detail: "The entity's tag, set in the Inspector's Tag dropdown (read/write)", insert: "tag", kind: "Property" },
   { label: "id", detail: "Stable unique id for this exact entity (read-only) — unlike name/tag, never shared with any other entity, even clones. Save it (e.g. from spawn()'s return value) to findById() this exact entity later.", insert: "id", kind: "Property" },
   { label: "state", detail: 'State machine — this.state.current, this.state.previous, this.state.change(name). Needs no component; works on every entity.', insert: "state.", kind: "Module" },
+  { label: "releaseToPool(delay)", detail: "Return this pooled object to the pool it came from (Unity: pool.Release(this)). It is switched off and reused by the next pool.get(). Optional delay in seconds, e.g. this.releaseToPool(2). Fires onDisable().", insert: "releaseToPool(${1})", kind: "Method", snippet: true },
+  { label: "isPooled", detail: "True if this object was created by a pool (pool.create / pool.get). Read-only.", insert: "isPooled", kind: "Property" },
   { label: "destroy()", detail: "Destroy this entity — removed at end of frame, onDestroy() fires just before removal", insert: "destroy()", kind: "Method" },
   { label: "destroyed", detail: "True once destroy() has been called (read-only)", insert: "destroyed", kind: "Property" },
   { label: "isClone", detail: "True if this entity was created by spawn() at runtime, rather than placed in the scene (read-only)", insert: "isClone", kind: "Property" },
@@ -837,6 +841,7 @@ const GLOBAL_APIS = [
   { label: "findInRadius(x, y, radius, opts)", detail: 'Find every entity within radius world units of (x, y), nearest first. Optionally narrow with { name: "..." } or { tag: "..." }. E.g. findInRadius(this.x, this.y, 200, { tag: "Enemy" })', insert: "findInRadius(${1:x}, ${2:y}, ${3:radius})", kind: "Function", snippet: true },
   { label: "scene", detail: "Scene utilities: scene.current, scene.findFirst(), scene.load(), scene.restart(), scene.pause(), scene.resume()", insert: "scene.", kind: "Module" },
   { label: "physics", detail: "Physics utilities: physics.raycast(x1,y1,x2,y2,opts), physics.layer(n)", insert: "physics.", kind: "Module" },
+  { label: "pool", detail: "Object pooling (like Unity's ObjectPool): pool.create(name, opts), pool.get(name, x, y), pool.release(obj). Reuse bullets/effects instead of spawn()/destroy() every time.", insert: "pool.", kind: "Module" },
   { label: "nav", detail: "NavWorld2D pathfinding: nav.findPath(x1,y1,x2,y2,opts), nav.isWalkable(x,y), nav.bake()", insert: "nav.", kind: "Module" },
   { label: "input", detail: "Input queries: input.keyDown(key), input.keyPressed(key)", insert: "input.", kind: "Module" },
   { label: "mouse", detail: "Mouse position + buttons: mouse.x, mouse.y, mouse.down(button), mouse.isOver(name), mouse.clickedOn(name)", insert: "mouse.", kind: "Module" },
@@ -878,6 +883,104 @@ const PHYSICS_API = [
   { label: "raycast(x1, y1, x2, y2, opts)", detail: "Raycast with options. opts = { exclude: [this], layerMask: physics.layer(2,3), debug: true }. exclude: array of entity contexts to skip (e.g. [this] to ignore the shooter). layerMask: restrict which physics layers the ray can hit. debug:true draws the ray in Play view (green=hit, red=miss).", insert: "raycast(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2}, { exclude: [${5:this}] })", kind: "Method", snippet: true },
   { label: "layer(...indices)", detail: "Build a layerMask from one or more layer indices (0-15) for raycast's opts.layerMask. E.g. physics.layer(2, 3) hits only layers 2 and 3.", insert: "layer(${1:0})", kind: "Method", snippet: true },
 ];
+
+// pool.<member> — runtime/pooling/ObjectPool.js (see ScriptAPI.js's `pool` global).
+// create() returns a pool handle with: get(x, y) / get({x,y,rotation}),
+// release(obj), prewarm(n), clear(), countActive, countInactive, countAll.
+const POOL_API = [
+  { label: "create(name, options)", detail: "Create a pool (Unity: new ObjectPool). options: { source, createFunc, defaultCapacity, maxSize, collectionCheck, resetComponents, onGet, onRelease, onDestroy } (press Ctrl+Space inside the { } to see each one) — or createFunc: () => spawn(\"Bullet\"). Returns a handle: handle.get(x, y), handle.release(obj), handle.prewarm(n), handle.clear(), handle.countActive / countInactive / countAll. Objects start switched off; pooled scripts get onEnable()/onDisable().", insert: 'create("${1:Bullets}", { source: "${2:Bullet}", defaultCapacity: ${3:20}, maxSize: ${4:100} })', kind: "Method", snippet: true },
+  { label: "get(name, x, y)", detail: "Take an object from the pool called `name`, switch it on at (x, y) and return it. The pool is created on first use if `name` is a prefab/entity name. Recycles a switched-off object when one is free, otherwise creates a new one.", insert: 'get("${1:Bullet}", ${2:this.x}, ${3:this.y})', kind: "Method", snippet: true },
+  { label: "release(obj)", detail: "Put an object back in the pool it came from: it is switched off (no drawing, physics or onUpdate) and kept for the next get(). Fires onDisable(). Same as obj.releaseToPool().", insert: "release(${1:obj})", kind: "Method", snippet: true },
+  { label: "find(name)", detail: "Look up a pool created earlier with pool.create(name). Returns its handle, or null.", insert: 'find("${1:Bullets}")', kind: "Method", snippet: true },
+];
+
+// Keys of the pool.create(name, { … }) options object — offered when the cursor
+// is directly inside that literal so nobody has to guess the option names.
+const POOL_CREATE_OPTS_API = [
+  { label: "source", detail: "What to clone for every pooled object: a prefab name, a scene entity name, or an entity. Defaults to the pool's own name if omitted. Use this OR createFunc.", insert: 'source: "${1:Bullet}"', kind: "Property", snippet: true },
+  { label: "createFunc", detail: "Instead of `source`: a function that builds one new object, e.g. () => spawn(\"Bullet\"). Called whenever the pool needs a new object.", insert: 'createFunc: () => spawn("${1:Bullet}")', kind: "Property", snippet: true },
+  { label: "defaultCapacity", detail: "How many objects to build up front, switched off, so get() never has to create one in the middle of gameplay. Default 10.", insert: "defaultCapacity: ${1:20}", kind: "Property", snippet: true },
+  { label: "maxSize", detail: "Most switched-off objects the pool keeps. A release beyond this really destroys the object. Default 10000.", insert: "maxSize: ${1:100}", kind: "Property", snippet: true },
+  { label: "collectionCheck", detail: "true (default) = warn in the console when the same object is released twice. Set false to silence it.", insert: "collectionCheck: ${1:true}", kind: "Property", snippet: true },
+  { label: "resetComponents", detail: "true (default) = when released, every component (tint, opacity, flip, animation, tag…) goes back to how the object was first built. Set false to let objects keep their changes. Script variables are never reset — use onEnable().", insert: "resetComponents: ${1:true}", kind: "Property", snippet: true },
+  { label: "onGet", detail: "Called every time get() hands an object out (Unity's actionOnGet). onGet(obj) { … }", insert: "onGet(obj) {\n  $0\n}", kind: "Method", snippet: true },
+  { label: "onRelease", detail: "Called every time an object is put back (Unity's actionOnRelease). onRelease(obj) { … }", insert: "onRelease(obj) {\n  $0\n}", kind: "Method", snippet: true },
+  { label: "onDestroy", detail: "Called when the pool really destroys an object: pool full on release, or clear() (Unity's actionOnDestroy). onDestroy(obj) { … }", insert: "onDestroy(obj) {\n  $0\n}", kind: "Method", snippet: true },
+];
+
+// Members of the handle returned by pool.create() / pool.find().
+const POOL_HANDLE_API = [
+  { label: "get(x, y)", detail: "Take an object, place it at (x, y), switch it on and return it. Creates a new one only if none is free. Also accepts get({ x, y, rotation }).", insert: "get(${1:this.x}, ${2:this.y})", kind: "Method", snippet: true },
+  { label: "release(obj)", detail: "Put an object back: it is switched off and kept for the next get(). Fires onDisable().", insert: "release(${1:obj})", kind: "Method", snippet: true },
+  { label: "prewarm(count)", detail: "Build `count` more switched-off objects right now.", insert: "prewarm(${1:10})", kind: "Method", snippet: true },
+  { label: "clear()", detail: "Destroy every switched-off object. Objects still in use are untouched.", insert: "clear()", kind: "Method" },
+  { label: "countActive", detail: "Objects currently handed out by get(). Read-only.", insert: "countActive", kind: "Property" },
+  { label: "countInactive", detail: "Switched-off objects waiting for the next get(). Read-only.", insert: "countInactive", kind: "Property" },
+  { label: "countAll", detail: "Every object this pool owns (active + inactive). Read-only.", insert: "countAll", kind: "Property" },
+  { label: "name", detail: "The pool's name. Read-only.", insert: "name", kind: "Property" },
+];
+
+/**
+ * Scans `text` (document up to the cursor) for the last still-open
+ * pool.create( call. Returns null unless the cursor sits DIRECTLY inside that
+ * call's options literal (not inside a nested onGet(obj) { … } body or a
+ * nested call); otherwise returns the Set of top-level option keys already
+ * written, so they aren't suggested twice.
+ */
+export function _scanPoolCreateOpts(text) {
+  const callRx = /\bpool\s*\.\s*create\s*\(/g;
+  let lastIdx = -1;
+  let m;
+  while ((m = callRx.exec(text)) !== null) lastIdx = m.index + m[0].length;
+  if (lastIdx === -1) return null;
+
+  const tail = text.slice(lastIdx);
+  let paren = 1;
+  let brace = 0;
+  let inString = null;
+  let escaped = false;
+  let segStart = 0; // start of the current top-level `key: value` entry
+  const used = new Set();
+  const noteKey = (from, to) => {
+    const km = /^\s*(?:["']?)(\w+)(?:["']?)\s*(?::|\(|,|$)/.exec(tail.slice(from, to));
+    if (km) used.add(km[1]);
+  };
+  for (let i = 0; i < tail.length; i++) {
+    const ch = tail[i];
+    if (inString) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { inString = ch; continue; }
+    if (ch === "(" || ch === "[") { paren++; continue; }
+    if (ch === ")" || ch === "]") { paren--; if (paren <= 0) return null; continue; }
+    if (ch === "{") {
+      brace++;
+      if (brace === 1 && paren === 1) segStart = i + 1;
+      continue;
+    }
+    if (ch === "}") { brace = Math.max(0, brace - 1); if (brace === 0) return null; continue; }
+    if (ch === "," && brace === 1 && paren === 1) {
+      noteKey(segStart, i);
+      segStart = i + 1;
+    }
+  }
+  if (brace !== 1 || paren !== 1) return null;
+  // The entry being typed right now doesn't count as "used" until it has a value,
+  // but a finished `key(obj) { … }` method entry before it is captured by the comma scan.
+  return used;
+}
+
+/** Variables assigned from pool.create(...) / pool.find(...), e.g. `var bullets = pool.create(…)`. */
+function _parsePoolVariables(text) {
+  const names = new Set();
+  const rx = /(?:\b(?:var|let|const)\s+|^|[;\s])(\w+)\s*=\s*pool\s*\.\s*(?:create|find)\s*\(/gm;
+  let m;
+  while ((m = rx.exec(text)) !== null) names.add(m[1]);
+  return names;
+}
 
 const NAV_API = [
   { label: "findPath(x1, y1, x2, y2)", detail: "Find a walkable path across the scene's NavWorld2D from (x1,y1) to (x2,y2), snapping each endpoint to the nearest walkable cell. opts.radius applies agent-size clearance (default 0). Returns an array of {x,y} WORLD-space waypoints (start to goal inclusive), or null if no path exists or the scene has no NavWorld2D. Waypoints are simplified (straight runs merged) but NOT smoothed — move through each in order for correct obstacle-avoiding movement.", insert: "findPath(${1:x1}, ${2:y1}, ${3:x2}, ${4:y2})", kind: "Method", snippet: true },
@@ -3054,6 +3157,16 @@ function _provideCompletionItemsImpl(monaco, model, position) {
         return { suggestions };
       }
 
+      // ── pool.create("Name", { <partial> → every pool option ───────────────
+      const poolUsed = _scanPoolCreateOpts(textUntilPosition);
+      if (poolUsed) {
+        for (const item of POOL_CREATE_OPTS_API) {
+          if (poolUsed.has(item.label)) continue;
+          suggestions.push(_makeCompletion(monaco, item, range));
+        }
+        return { suggestions };
+      }
+
       // ── spawn("name", { <partial>  /  this.spawn("name", { <partial> ─────
       if (_isInsideFunctionOptArg(textUntilPosition, /\bspawn\s*\(/)) {
         const usedKeys = _usedObjectKeys(textUntilPosition);
@@ -3267,6 +3380,9 @@ function _provideCompletionItemsImpl(monaco, model, position) {
         } else if (subObj === "physics") {
           isKnownSubObj = true;
           items = PHYSICS_API;
+        } else if (subObj === "pool") {
+          isKnownSubObj = true;
+          items = POOL_API;
         } else if (subObj === "nav") {
           isKnownSubObj = true;
           items = NAV_API;
@@ -3325,6 +3441,14 @@ function _provideCompletionItemsImpl(monaco, model, position) {
         const raycastVars = _parseRaycastVariables(textUntilPosition);
         if (raycastVars.has(subObj)) {
           for (const item of RAYCAST_RESULT_API) {
+            suggestions.push(_makeCompletion(monaco, item, range));
+          }
+          return { suggestions };
+        }
+
+        // Unknown sub-object — a pool handle? `var bullets = pool.create(…)` → bullets.<members>
+        if (_parsePoolVariables(textUntilPosition).has(subObj)) {
+          for (const item of POOL_HANDLE_API) {
             suggestions.push(_makeCompletion(monaco, item, range));
           }
           return { suggestions };
@@ -3453,6 +3577,8 @@ function _provideCompletionItemsImpl(monaco, model, position) {
       // isPointerOver/isClicked above).
       const snippetsBase = [
         { label: "function onStart()", detail: "Called once before the first onUpdate — use for initialization", insert: "onStart() {\n  $1\n}" },
+        { label: "function onEnable()", detail: "Pooled objects: runs every time pool.get() switches this object on — reset your variables here (Unity's OnEnable).", insert: "onEnable() {\n  $1\n}" },
+        { label: "function onDisable()", detail: "Pooled objects: runs every time this object is released back to its pool.", insert: "onDisable() {\n  $1\n}" },
         { label: "function onClone()", detail: "Called once, right before onStart(), but ONLY on entities created by spawn(). Never fires for entities placed in the scene.", insert: "onClone() {\n  $1\n}" },
         { label: "function onUpdate(dt)", detail: "Called every frame. dt = seconds since last frame (use for movement)", insert: "onUpdate(dt) {\n  $1\n}" },
         { label: "function onFixedUpdate(dt)", detail: "Called at a fixed 60 Hz rate — use for physics/rigidbody changes", insert: "onFixedUpdate(dt) {\n  $1\n}" },
@@ -3624,6 +3750,8 @@ function _buildHoverIndex() {
     ["nav waypoint", NAV_WAYPOINT_API],
     ["raycast() result", RAYCAST_RESULT_API],
     ["raycast() options", RAYCAST_OPTS_API],
+    ["pool.create() options", POOL_CREATE_OPTS_API],
+    ["pool handle", POOL_HANDLE_API],
     ["input", INPUT_API],
     ["mouse", MOUSE_API],
     ["touch", TOUCH_API],

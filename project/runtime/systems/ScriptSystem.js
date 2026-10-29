@@ -286,6 +286,13 @@ export class ScriptSystem {
     scriptApi._tweenFn = function(target, properties, duration, easing, onComplete) {
       return self._scheduleTween(target, properties, duration, easing, onComplete);
     };
+    scriptApi._poolLifecycleFn = function(entity, name) {
+      self._firePoolLifecycle(entity, name);
+    };
+    scriptApi._poolCancelFn = function(entityId) {
+      self._cancelTimersForEntity(entityId);
+      self._cancelTweensForEntity(entityId);
+    };
     scriptApi._cancelTweenFn = function(tweenId) {
       return self._cancelTween(tweenId);
     };
@@ -551,7 +558,7 @@ export class ScriptSystem {
       const lifecycleNames = [
         "onStart", "onUpdate", "onClick", "onFixedUpdate", "onCollision",
         "onCollisionEnter", "onCollisionStay", "onCollisionExit", "onTriggerEnter", "onTriggerExit",
-        "onMessage", "onClone", "onDestroy",
+        "onMessage", "onClone", "onDestroy", "onEnable", "onDisable",
         "onStateEnter", "onStateUpdate", "onStateExit", "onHearSound", "onLoseSound",
       ];
       const customNames = this._extractTopLevelFunctionNames(source, lifecycleNames);
@@ -605,12 +612,18 @@ export class ScriptSystem {
       // Extra trailing parameters that are never passed a value, so the
       // names resolve to `undefined` inside the script (see SHADOWED_GLOBALS).
       const shadowed = SHADOWED_GLOBALS.filter((n) => !declaresOwnBinding(source, n));
+      // `pool` is passed as an extra trailing parameter ONLY when the script
+      // doesn't declare its own let/const/class `pool` (a very common
+      // variable name) — a parameter with the same name would turn that into
+      // a SyntaxError and break existing scripts.
+      const poolParam = declaresOwnBinding(source, "pool") ? [] : ["pool"];
 
       const factory = new Function(
         "findFirst", "findAll", "findWithTag", "findFirstWithTag", "findAllWithTag", "findById", "findInRadius",
         "scene", "physics", "input", "mouse", "touch", "time", "random", "mathx", "smoothstep", "global", "save", "debug",
         "sendMessage", "broadcastMessage", "spawn", "wait", "cancelWait", "repeat", "cancelRepeat", "tween", "cancelTween", "nav",
         "console", "Math", "__ctx",
+        ...poolParam,
         ...shadowed,
         '"use strict";\n' + source + '\n' +
         rebindLines.join("\n") + "\n" +
@@ -618,6 +631,7 @@ export class ScriptSystem {
         returnLines.join("\n") + "\n" +
         "};\n"
       );
+      factory.__hasPoolParam = poolParam.length === 1;
       return factory;
     } catch (err) {
       this._reportError(scriptName, err, "compile");
@@ -765,7 +779,8 @@ export class ScriptSystem {
         g.findFirst, g.findAll, g.findWithTag, g.findFirstWithTag, g.findAllWithTag, g.findById, g.findInRadius,
         g.scene, g.physics, g.input, g.mouse, g.touch, g.time, g.random, g.mathx, g.smoothstep, g.global, g.save, g.debug,
         g.sendMessage, g.broadcastMessage, g.spawn, g.wait, g.cancelWait, g.repeat, g.cancelRepeat, g.tween, g.cancelTween, g.nav,
-        console, Math, context
+        console, Math, context,
+        ...(factory.__hasPoolParam ? [g.pool] : [])
       );
 
       if (!this.instances.has(entity.id)) {
@@ -790,6 +805,16 @@ export class ScriptSystem {
         } catch (err) {
           this._reportError(script.scriptName, err, "onClone");
           inst.enabled = false;
+        }
+      }
+
+      // A pooled object's FIRST get(): its scripts only just compiled, so the
+      // onEnable() that get() asked for runs here, before onStart (Unity order).
+      if (inst.enabled && entity.__poolEnable && inst.handlers.onEnable) {
+        try {
+          this._invoke(inst, inst.handlers.onEnable);
+        } catch (err) {
+          this._reportError(script.scriptName, err, "onEnable");
         }
       }
 
@@ -844,6 +869,29 @@ export class ScriptSystem {
     for (const entity of entities) {
       if (this.instances.has(entity.id)) continue;
       this._initEntityScripts(entity, !!entity.__isClone);
+      entity.__poolEnable = false;
+    }
+  }
+
+  /**
+   * Fires onEnable()/onDisable() on a pooled entity's scripts (see
+   * pooling/ObjectPool.js). An entity whose scripts haven't been compiled
+   * yet (a prewarmed object's very first get()) is flagged instead, and
+   * _initEntityScripts() runs its onEnable right before onStart.
+   */
+  _firePoolLifecycle(entity, name) {
+    const list = this.instances.get(entity.id);
+    if (!list) {
+      if (name === "onEnable") entity.__poolEnable = true;
+      return;
+    }
+    for (const inst of list) {
+      if (!inst.enabled || !inst.handlers[name]) continue;
+      try {
+        this._invoke(inst, inst.handlers[name]);
+      } catch (err) {
+        this._reportError(inst.scriptName, err, name);
+      }
     }
   }
 

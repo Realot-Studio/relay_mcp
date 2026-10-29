@@ -73,3 +73,8 @@ metadata, temporary archives, and deployment-only server configuration.
 ## AI bridge (let any MCP-capable AI edit your project)
 Press **AI** in the editor toolbar and follow the four steps (no terminal needed).
 Details and safety notes: `relay/README.md`.
+
+
+## Object pooling
+
+See [docs/POOLING.md](docs/POOLING.md) — `pool.create / get / release`, `onEnable` / `onDisable`, `this.releaseToPool()`.

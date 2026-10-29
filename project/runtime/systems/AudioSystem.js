@@ -25,7 +25,7 @@
 import { TRANSFORM } from "../components/Transform.js";
 import { AUDIO_SOURCE } from "../components/AudioSource.js";
 import { CAMERA } from "../components/Camera.js";
-import { resolveAudioSrc } from "../assets/AssetManager.js";
+import { resolveAudioSrc, getAudioBuffer, getAudioContext, resumeAudioContext } from "../assets/AssetManager.js";
 
 export class AudioSystem {
   constructor() {
@@ -80,6 +80,7 @@ export class AudioSystem {
     this._gestureCanvas = canvas;
     this._gestureHandler = () => {
       this._userInteracted = true;
+      resumeAudioContext();
       for (const id of this._pendingAutoplay) this._prevAutoplay.set(id, false);
       this._pendingAutoplay.clear();
     };
@@ -104,6 +105,39 @@ export class AudioSystem {
   _playOneShot(entityId, source, appliedVolume) {
     const src = resolveAudioSrc(source.audioKey);
     if (!src) return;
+
+    // Preferred path: a pre-decoded AudioBuffer starts the instant it is
+    // asked to, with no fetch/decode, and layers freely. Falls through to
+    // the element path below only while the clip is still decoding or the
+    // browser hasn't allowed audio yet (no gesture).
+    const ctx = getAudioContext();
+    const buf = ctx ? getAudioBuffer(source.audioKey) : null;
+    if (ctx && buf) {
+      if (ctx.state !== "running") { try { ctx.resume(); } catch (_) {} }
+      if (ctx.state === "running") {
+        try {
+          const node = ctx.createBufferSource();
+          const gain = ctx.createGain();
+          node.buffer = buf;
+          node.playbackRate.value = Math.max(0.25, Math.min(4, source.pitch != null ? source.pitch : 1));
+          gain.gain.value = appliedVolume;
+          node.connect(gain);
+          gain.connect(ctx.destination);
+          const bufVoice = {
+            paused: false,
+            ended: false,
+            set src(_v) { /* element-API compatibility for the voice pool */ },
+            pause() { this.paused = true; try { node.stop(); } catch (_) {} },
+          };
+          node.onended = () => { bufVoice.ended = true; };
+          node.start(0);
+          if (!this._oneShotVoices.has(entityId)) this._oneShotVoices.set(entityId, []);
+          this._oneShotVoices.get(entityId).push(bufVoice);
+          return;
+        } catch (_) { /* fall back to the element path */ }
+      }
+    }
+
     const voice = new Audio(src);
     voice.preload = "auto";
     voice.volume = appliedVolume;

@@ -68,6 +68,7 @@ import { NAV_AGENT_2D } from "../components/NavAgent2D.js";
 import { resolveNavAreaIndex, resolveNavAreaMask, resolveNavAreaCosts } from "./NavAPI.js";
 import { CHARACTER_CONTROLLER, ControllerType } from "../components/CharacterController.js";
 import { cloneEntity } from "../scene/SceneSerializer.js";
+import { PoolManager } from "../pooling/ObjectPool.js";
 import { createTransformAPI } from "./components/TransformAPI.js";
 import { createSpriteAPI } from "./components/SpriteAPI.js";
 import { createShapeAPI } from "./components/ShapeAPI.js";
@@ -2320,6 +2321,31 @@ class EntityContext {
   }
 
   /**
+   * Puts this object back into the pool it came from (Unity: pool.Release(this)).
+   * The object is switched off (no drawing, no physics, no onUpdate) and kept
+   * for the next pool.get(). Optional `delay` (seconds) releases it later, e.g.
+   *   this.releaseToPool(2);   // bullet returns to its pool after 2 seconds
+   * onDisable() runs when it actually goes back. Does nothing (with a console
+   * warning) if this object did not come from a pool.
+   * @param {number} [delay]
+   * @returns {boolean} true if released now (always true-ish when delayed)
+   */
+  releaseToPool(delay) {
+    var api = this._scriptApi;
+    var self = this;
+    if (typeof delay === "number" && delay > 0 && api._waitFn) {
+      api._waitFn(delay, function () { api._pools.release(self); });
+      return true;
+    }
+    return api._pools.release(this);
+  }
+
+  /** True if this object was created by a pool (see pool.create). Read-only. */
+  get isPooled() {
+    return this._scriptApi._pools.isPooled(this._entity.id);
+  }
+
+  /**
    * True if this entity currently has the given component attached —
    * the runtime backing for editor autocomplete's type-narrowing
    * feature ("if (enemy.hasComponent(\"Rigidbody2D\")) { ... }").
@@ -2870,6 +2896,12 @@ export class ScriptAPI {
     this._tweenFn = null;
     /** Set by ScriptSystem constructor to enable cancelTween(tweenId) */
     this._cancelTweenFn = null;
+    /** Set by ScriptSystem constructor: fires onEnable()/onDisable() on a pooled entity's scripts. */
+    this._poolLifecycleFn = null;
+    /** Set by ScriptSystem constructor: cancels an entity's wait()/repeat()/tween() timers when it is released to a pool. */
+    this._poolCancelFn = null;
+    /** Unity-style object pools (pool.create / pool.get / pool.release) — see pooling/ObjectPool.js */
+    this._pools = new PoolManager(this);
     /** Set by ScriptSystem constructor (bound fireStateChange) to back
      *  every entity's this.state.change(name) — see StateAPI.js and
      *  EntityContext's constructor above. */
@@ -3504,6 +3536,8 @@ export class ScriptAPI {
    */
   clearContexts() {
     this._contexts.clear();
+    // Pooled objects live in the World that was just cleared — drop the pools too.
+    if (this._pools) this._pools.clearAll();
     // Collab goals are per-scene transient state, same category as the
     // contexts themselves — a stale goal surviving a scene.restart()/
     // scene.load() could otherwise make a freshly-spawned agent think
@@ -4153,6 +4187,25 @@ export class ScriptAPI {
       /** Cancel an active tween by the id returned from tween(). */
       cancelTween: function (tweenId) {
         return self._cancelTweenFn ? self._cancelTweenFn(tweenId) : false;
+      },
+      /**
+       * Object pooling — reuse objects instead of spawn()/destroy() every time
+       * (same idea as Unity's ObjectPool). Create a pool once, then get() and
+       * release() objects from it:
+       *   var bullets = pool.create("Bullets", { source: "Bullet", defaultCapacity: 20, maxSize: 100 });
+       *   var b = bullets.get(this.x, this.y);   // switched on, placed at x,y
+       *   bullets.release(b);                    // switched off, kept for reuse
+       * `source` is a prefab name, a scene entity name, or an entity. Pooled
+       * scripts get onEnable() (every get) and onDisable() (every release).
+       * Shorthand: pool.get("Bullet", x, y) / pool.release(obj) — the pool is
+       * created on first use. Inside the object itself: this.releaseToPool(delay).
+       * A pool lives until the scene restarts or another scene loads.
+       */
+      pool: {
+        create: function (name, options) { return self._pools.create(name, options); },
+        find: function (name) { return self._pools.find(name); },
+        get: function (name, x, y) { return self._pools.get(name, x, y); },
+        release: function (obj) { return self._pools.release(obj); },
       },
       input: {
         /**

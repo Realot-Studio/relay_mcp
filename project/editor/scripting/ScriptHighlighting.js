@@ -59,7 +59,7 @@ const ENGINE_GLOBALS = [
   "findWithTag", "findFirst", "findAll", "findFirstWithTag", "findAllWithTag", "findById", "findInRadius",
   "scene", "physics", "input", "mouse", "touch", "time", "random", "mathx",
   "global", "save", "debug", "sendMessage", "broadcastMessage", "spawn", "wait",
-  "cancelWait", "repeat", "cancelRepeat", "tween", "cancelTween", "nav",
+  "cancelWait", "repeat", "cancelRepeat", "tween", "cancelTween", "nav", "pool",
 ];
 
 // Realot's own mathx.<member> helpers — genuinely engine API, so
@@ -70,7 +70,7 @@ const MATHX_MEMBERS = ["lerp", "clamp", "moveToward", "remap", "approximately"];
 const ENGINE_LIFECYCLE = [
   "onStart", "onClone", "onUpdate", "onClick", "onFixedUpdate", "onCollision",
   "onCollisionEnter", "onCollisionStay", "onCollisionExit", "onTriggerEnter",
-  "onTriggerExit", "onMessage", "onDestroy",
+  "onTriggerExit", "onMessage", "onDestroy", "onEnable", "onDisable",
   "onStateEnter", "onStateUpdate", "onStateExit", "onHearSound", "onLoseSound",
 ];
 
@@ -120,6 +120,10 @@ const ENGINE_MEMBERS = [
   // NavWorld2D one-line follow helper (this.navMoveToward — see
   // EntityContext.navMoveToward in ScriptAPI.js)
   "navMoveToward",
+  // Object pooling (pool.create/get/release/find, pool handle, this.releaseToPool — see ObjectPool.js)
+  "releaseToPool", "isPooled", "prewarm", "countActive", "countInactive", "countAll",
+  // pool.create() option names
+  "source", "createFunc", "defaultCapacity", "maxSize", "collectionCheck", "resetComponents", "onGet", "onRelease",
   // Car-controller counterpart: NavWorld2D pathing + Car handling (see
   // EntityContext.navDriveToward in ScriptAPI.js)
   "navDriveToward",

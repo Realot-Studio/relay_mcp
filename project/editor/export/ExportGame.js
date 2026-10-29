@@ -54,6 +54,7 @@
 
 import { findUsedAssetKeys } from "./UsedAssets.js";
 import { transcodeImage, transcodeAudio, renderIconPng } from "./TranscodeAssets.js";
+import { packAtlases } from "./AtlasPacker.js";
 import { getAllScripts, getScriptSource } from "../scripting/ScriptStorage.js";
 import { syncScriptSourcesInScenes } from "../scripting/ScriptSync.js";
 import { ENGINE_VERSION } from "../../runtime/EngineVersion.js";
@@ -113,6 +114,7 @@ const RUNTIME_FILES = [
   "physics/PhysicsWorld.js",
   "physics/RapierLoader.js",
   "prefabs/PrefabPropagation.js",
+  "pooling/ObjectPool.js",
   "prefabs/PrefabRegistry.js",
   "scene/SceneLoader.js",
   "scene/SceneManager.js",
@@ -231,6 +233,74 @@ function slugify(name) {
   return (name || "game").trim().replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase().replace(/^-+|-+$/g, "") || "game";
 }
 
+
+/** Clips longer than this stay as streamed audio elements instead of being decoded whole into memory. */
+const AUDIO_STREAM_THRESHOLD_BYTES = 1.5 * 1024 * 1024;
+
+/** Every string value anywhere inside `node` that is a member of `keySet`. */
+function collectKnownKeys(node, keySet, out, seen) {
+  if (node == null) return;
+  if (typeof node === "string") { if (keySet.has(node)) out.add(node); return; }
+  if (typeof node !== "object" || seen.has(node)) return;
+  seen.add(node);
+  if (Array.isArray(node)) { for (const v of node) collectKnownKeys(v, keySet, out, seen); return; }
+  for (const k in node) collectKnownKeys(node[k], keySet, out, seen);
+}
+
+/** Frame keys in the order clips play them (so a clip's frames land side by side in one atlas). */
+function orderedFrameKeys(sources) {
+  const order = [];
+  const seenKeys = new Set();
+  const seenObj = new WeakSet();
+  const walk = (node) => {
+    if (!node || typeof node !== "object" || seenObj.has(node)) return;
+    seenObj.add(node);
+    if (Array.isArray(node)) { for (const v of node) walk(v); return; }
+    if (Array.isArray(node.clips) && "currentClipId" in node) {
+      for (const clip of node.clips) {
+        for (const f of (clip && clip.frames) || []) {
+          if (f && f.spriteKey && !seenKeys.has(f.spriteKey)) { seenKeys.add(f.spriteKey); order.push(f.spriteKey); }
+        }
+      }
+      return;
+    }
+    for (const k in node) walk(node[k]);
+  };
+  for (const src of sources) walk(src);
+  return order;
+}
+
+/**
+ * Per-scene asset lists (what Unity's build/Addressables groups give you):
+ * which sprites + sounds each scene needs, plus a "shared" set for anything
+ * only prefabs or scripts reference. The exported game loads shared + the
+ * active scene before starting, and the other scenes in the background.
+ */
+function buildSceneAssetLists(allScenes, activeSceneId, prefabs, usedSpriteKeys, usedAudioKeys, shippedSpriteKeys, shippedAudioKeys) {
+  const scenes = [];
+  const inAnyScene = { sprites: new Set(), audio: new Set() };
+  for (const sc of allScenes) {
+    const sp = new Set();
+    const au = new Set();
+    collectKnownKeys(sc.data, shippedSpriteKeys, sp, new WeakSet());
+    collectKnownKeys(sc.data, shippedAudioKeys, au, new WeakSet());
+    sp.forEach((k) => inAnyScene.sprites.add(k));
+    au.forEach((k) => inAnyScene.audio.add(k));
+    scenes.push({ id: sc.id, name: sc.name, sprites: Array.from(sp), audio: Array.from(au) });
+  }
+  const shared = { sprites: new Set(), audio: new Set() };
+  collectKnownKeys(prefabs, shippedSpriteKeys, shared.sprites, new WeakSet());
+  collectKnownKeys(prefabs, shippedAudioKeys, shared.audio, new WeakSet());
+  shippedSpriteKeys.forEach((k) => { if (!inAnyScene.sprites.has(k)) shared.sprites.add(k); });
+  shippedAudioKeys.forEach((k) => { if (!inAnyScene.audio.has(k)) shared.audio.add(k); });
+  return {
+    activeId: activeSceneId,
+    shared: { sprites: Array.from(shared.sprites), audio: Array.from(shared.audio) },
+    scenes,
+  };
+}
+
+
 /**
  * Builds the exported game's standalone bootstrap script — the same
  * boot sequence as player/main.js (real-window-sized PIXI app,
@@ -248,6 +318,7 @@ function buildMainJs(opts) {
   const spriteManifest = opts.spriteManifest;
   const audioManifest = opts.audioManifest;
   const gameFps = opts.gameFps;
+  const sceneAssets = opts.sceneAssets || { activeId: null, shared: { sprites: [], audio: [] }, scenes: [] };
   // Baked in at export time (an exported build has no localStorage-backed
   // NavAreas.js registry to read at runtime, same reason spriteManifest/
   // audioManifest are baked file lists rather than live AssetRegistry
@@ -264,13 +335,14 @@ function buildMainJs(opts) {
     " */",
     'import { createGame } from "./runtime/index.js";',
     'import { getSafeRendererResolution, prepareGameCanvas } from "./runtime/core/MobileViewport.js";',
-    'import { registerTexture, registerLazyTexture, registerAudio, preloadTextures } from "./runtime/assets/AssetManager.js";',
+    'import { registerTexture, registerLazyTexture, registerAudio, registerLazyAtlasFrame, markAudioStreaming, preloadTextures, preloadAudioBuffers } from "./runtime/assets/AssetManager.js";',
     'import { RenderSystem } from "./runtime/systems/RenderSystem.js";',
     'import { CAMERA } from "./runtime/components/Camera.js";',
     'import { TRANSFORM } from "./runtime/components/Transform.js";',
     "",
     "const SPRITE_MANIFEST = " + JSON.stringify(spriteManifest) + ";",
     "const AUDIO_MANIFEST = " + JSON.stringify(audioManifest) + ";",
+    "const SCENE_ASSETS = " + JSON.stringify(sceneAssets) + ";",
     "",
     "// Animation frames are loaded on first use (see registerLazyTexture) so a",
     "// game with hundreds of frames boots fast and doesn't decode them all",
@@ -278,7 +350,8 @@ function buildMainJs(opts) {
     "function loadSpriteAssets() {",
     "  const eager = [];",
     "  for (const entry of SPRITE_MANIFEST) {",
-    '    if (entry.key.indexOf("animframe_") === 0) registerLazyTexture(entry.key, entry.file);',
+    '    if (entry.atlas) registerLazyAtlasFrame(entry.key, entry.atlas, entry.x, entry.y, entry.w, entry.h);',
+    '    else if (entry.key.indexOf("animframe_") === 0) registerLazyTexture(entry.key, entry.file);',
     "    else eager.push(entry);",
     "  }",
     "  const loads = eager.map(function (entry) {",
@@ -324,7 +397,7 @@ function buildMainJs(opts) {
     "}",
     "",
     "function loadAudioAssets() {",
-    "  for (const entry of AUDIO_MANIFEST) registerAudio(entry.key, entry.file);",
+    "  for (const entry of AUDIO_MANIFEST) { registerAudio(entry.key, entry.file); if (entry.stream) markAudioStreaming(entry.key); }",
     "}",
     "",
     "// Loads the active scene through loadFromData() so scene.restart()",
@@ -345,9 +418,14 @@ function buildMainJs(opts) {
     "// scene stops working, silently logged as a warning, not a boot",
     "// failure.",
     "async function loadActiveScene(game) {",
+    "  // Prefab catalogue (pool.create(\"Name\") / pool.get(\"Name\") clone prefabs by name). Fetched",
+    "  // alongside scene.json; a missing/failed prefabs.json never blocks boot.",
+    '  const prefabsReq = fetch("./prefabs.json").then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });',
     '  const res = await fetch("./scene.json");',
     "  if (!res.ok) throw new Error(\"Failed to fetch scene.json (\" + res.status + \")\");",
     "  const data = await res.json();",
+    "  const prefabRecords = await prefabsReq;",
+    "  if (prefabRecords && prefabRecords.length) game.restoreProjectPrefabs(prefabRecords);",
     "  game.loadFromData(data);",
     "  return data;",
     "}",
@@ -370,53 +448,76 @@ function buildMainJs(opts) {
     "    });",
     "}",
     "",
-    "// \u2500\u2500 Animation frame readiness \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-    "// Frames load lazily (memory), but the FIRST frames of every clip in the",
-    "// scene must be ready before the game starts, otherwise the first time a",
-    "// clip plays its frames arrive late and the character pops/blinks. The",
-    "// renderer also holds the last ready frame and AnimationSystem looks a few",
-    "// frames ahead, so this only has to cover each clip's opening frames.",
-    "const PRELOAD_FRAMES_PER_CLIP = 3;",
-    "function collectOpeningFrameKeys(node, out, seen) {",
-    "  if (!node || typeof node !== \"object\" || seen.has(node)) return;",
-    "  seen.add(node);",
-    "  if (Array.isArray(node.clips) && \"currentClipId\" in node) {",
-    "    for (const clip of node.clips) {",
-    "      const frames = (clip && clip.frames) || [];",
-    "      for (let i = 0; i < Math.min(PRELOAD_FRAMES_PER_CLIP, frames.length); i++) {",
-    "        if (frames[i] && frames[i].spriteKey) out.push(frames[i].spriteKey);",
-    "      }",
-    "      if (clip && clip.id === node.currentClipId && frames.length) {",
-    "        const idx = Math.min(node.currentFrameIndex || 0, frames.length - 1);",
-    "        if (frames[idx] && frames[idx].spriteKey) out.push(frames[idx].spriteKey);",
-    "      }",
+    "// \u2500\u2500 Per-scene asset loading (Unity-style: the build knows what each scene needs) \u2500\u2500",
+    "// Before the first frame: everything shared + the ACTIVE scene (animation",
+    "// atlases decoded and uploaded, sounds decoded), behind a progress bar.",
+    "// After the game runs: the other scenes' assets, one scene at a time, at low",
+    "// priority \u2014 so scene.load() to another scene is as smooth as the first one.",
+    "function lazyOnly(keys) {",
+    "  return keys.filter(function (k) { return k.indexOf(\"animframe_\") === 0; });",
+    "}",
+    "",
+    "function createLoadingBar() {",
+    "  const wrap = document.createElement(\"div\");",
+    "  wrap.style.cssText = \"position:fixed;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,0.12);z-index:99999;pointer-events:none;\";",
+    "  const bar = document.createElement(\"div\");",
+    "  bar.style.cssText = \"height:100%;width:0%;background:#6366f1;transition:width 120ms linear;\";",
+    "  wrap.appendChild(bar);",
+    "  document.body.appendChild(wrap);",
+    "  return {",
+    "    set: function (done, total) { bar.style.width = (total ? Math.round((done / total) * 100) : 100) + \"%\"; },",
+    "    remove: function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); },",
+    "  };",
+    "}",
+    "",
+    "async function preloadActiveSceneAssets() {",
+    "  const active = SCENE_ASSETS.scenes.find(function (s) { return s.id === SCENE_ASSETS.activeId; });",
+    "  let spriteKeys;",
+    "  let audioKeys;",
+    "  if (active) {",
+    "    spriteKeys = lazyOnly(SCENE_ASSETS.shared.sprites.concat(active.sprites));",
+    "    audioKeys = SCENE_ASSETS.shared.audio.concat(active.audio);",
+    "  } else {",
+    "    // no per-scene info available: fall back to loading everything",
+    "    spriteKeys = lazyOnly(SPRITE_MANIFEST.map(function (e) { return e.key; }));",
+    "    audioKeys = AUDIO_MANIFEST.map(function (e) { return e.key; });",
+    "  }",
+    "  const bar = createLoadingBar();",
+    "  try {",
+    "    await Promise.all([",
+    "      preloadTextures(spriteKeys, {",
+    "        concurrency: 8,",
+    "        timeoutMs: 45000,",
+    "        perTextureMs: 12000,",
+    "        onProgress: function (done, total) { bar.set(done, total); },",
+    "      }),",
+    "      preloadAudioBuffers(audioKeys, { timeoutMs: 20000 }),",
+    "    ]);",
+    "  } finally {",
+    "    bar.remove();",
+    "  }",
+    "}",
+    "",
+    "function finishOtherScenesInBackground() {",
+    "  const others = SCENE_ASSETS.scenes.filter(function (s) { return s.id !== SCENE_ASSETS.activeId; });",
+    "  if (!others.length && SCENE_ASSETS.scenes.length) return;",
+    "  const lowMemory = typeof navigator.deviceMemory === \"number\" && navigator.deviceMemory < 4;",
+    "  const fileOf = {};",
+    "  SPRITE_MANIFEST.forEach(function (e) { fileOf[e.key] = e.atlas || e.file; });",
+    "  AUDIO_MANIFEST.forEach(function (e) { fileOf[e.key] = e.file; });",
+    "  setTimeout(async function () {",
+    "    if (lowMemory) {",
+    "      // decode nothing; just warm the cache so later loads are instant",
+    "      const files = {};",
+    "      others.forEach(function (sc) { sc.sprites.concat(sc.audio).forEach(function (k) { if (fileOf[k]) files[fileOf[k]] = true; }); });",
+    "      for (const f of Object.keys(files)) { try { await fetch(f); } catch (_) {} }",
+    "      return;",
     "    }",
-    "    return;",
-    "  }",
-    "  if (Array.isArray(node)) { for (const v of node) collectOpeningFrameKeys(v, out, seen); return; }",
-    "  for (const k in node) collectOpeningFrameKeys(node[k], out, seen);",
-    "}",
-    "",
-    "function preloadSceneAnimationFrames(sceneData) {",
-    "  if (!sceneData) return Promise.resolve();",
-    "  const keys = [];",
-    "  collectOpeningFrameKeys(sceneData, keys, new WeakSet());",
-    "  return preloadTextures(keys, { concurrency: 6, timeoutMs: 8000 });",
-    "}",
-    "",
-    "// After the game is running, quietly pull the remaining animation files into",
-    "// the HTTP / service-worker cache (bytes only, nothing decoded, so no extra",
-    "// memory). Later frames then arrive from cache instead of the network.",
-    "function warmAnimationFilesInBackground() {",
-    "  const files = SPRITE_MANIFEST.filter(function (e) { return e.key.indexOf(\"animframe_\") === 0; }).map(function (e) { return e.file; });",
-    "  if (!files.length) return;",
-    "  let i = 0;",
-    "  function pump() {",
-    "    if (i >= files.length) return;",
-    "    const f = files[i++];",
-    "    fetch(f).catch(function () {}).then(function () { setTimeout(pump, 30); });",
-    "  }",
-    "  setTimeout(function () { pump(); pump(); }, 1500);",
+    "    for (const sc of others) {",
+    "      await preloadTextures(lazyOnly(sc.sprites), { concurrency: 2, timeoutMs: 120000, perTextureMs: 20000 });",
+    "      await preloadAudioBuffers(sc.audio, { timeoutMs: 60000 });",
+    "    }",
+    "  }, 2000);",
     "}",
     "",
     "async function boot() {",
@@ -470,11 +571,11 @@ function buildMainJs(opts) {
     '  if (window.visualViewport) window.visualViewport.addEventListener("resize", resizeGameToMount, { passive: true });',
     '  resizeGameToMount();',
     "",
-    "  try { await preloadSceneAnimationFrames(sceneData); } catch (err) { /* never block boot on preload */ }",
+    "  try { await preloadActiveSceneAssets(); } catch (err) { /* never block boot on preload */ }",
     "",
     "  game.loop.start();",
     "  window.__realotGame = game;",
-    "  warmAnimationFilesInBackground();",
+    "  finishOtherScenesInBackground();",
     "}",
     "",
     "boot().catch(function (err) {",
@@ -496,7 +597,11 @@ function buildMainJs(opts) {
  *   referencing a file that was never written.
  * @returns {string}
  */
-function buildIndexHtml(title, pwa, hasFavicon) {
+function buildIndexHtml(title, pwa, hasFavicon, preloadModules) {
+  // The browser normally discovers ES module imports one level at a time (a
+  // slow waterfall of ~100 files). modulepreload hints let it fetch them all
+  // in parallel up front — the cheap version of shipping one bundle.
+  const modulePreloadTags = (preloadModules || []).map(function (u) { return '<link rel="modulepreload" href="' + u + '" />\n'; }).join("");
   const iconHref = pwa ? "./icons/icon-192.png" : "./icons/favicon.png";
   const pwaHead = pwa
     ? '<link rel="manifest" href="./manifest.webmanifest" />\n<meta name="theme-color" content="#000000" />\n' +
@@ -598,6 +703,7 @@ function buildIndexHtml(title, pwa, hasFavicon) {
     "<style>\n  html, body { width: 100%; height: 100%; min-height: 100%; margin: 0; padding: 0; background: #000; overflow: hidden; overscroll-behavior: none; }\n" +
     "  #game-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }\n" +
     "  #game-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; -webkit-user-select: none; user-select: none; }\n</style>\n" +
+    modulePreloadTags +
     fallbackScript +
     '</head>\n<body>\n  <div id="game-canvas"></div>\n  <script type="module" src="./main.js"></script>\n' +
     pwaBody +
@@ -785,26 +891,57 @@ export async function buildExport(game, options) {
   const spritesFolder = zip.folder("assets/sprites");
   const audioFolder = zip.folder("assets/audio");
 
+  // Animation frames are packed into a few atlas sheets (see AtlasPacker.js);
+  // everything else (and any frame too big to pack) stays a normal file.
+  let singleSprites = usedSprites;
+  {
+    const frameRecs = usedSprites.filter((r) => r.key.indexOf("animframe_") === 0);
+    if (frameRecs.length) {
+      onProgress("Packing animation atlases…");
+      const order = orderedFrameKeys([game.getAllScenesData(), game.getAllPrefabs()]);
+      const rank = new Map(order.map((k, i) => [k, i]));
+      frameRecs.sort((a, b) => (rank.has(a.key) ? rank.get(a.key) : 1e9) - (rank.has(b.key) ? rank.get(b.key) : 1e9));
+      try {
+        const packed = await packAtlases(frameRecs.map((r) => ({ key: r.key, dataUrl: r.dataUrl })), { onProgress });
+        const atlasFolder = zip.folder("assets/atlases");
+        for (const at of packed.atlases) {
+          atlasFolder.file(at.file.replace("assets/atlases/", ""), at.bytes);
+          bytesAfter += at.bytes.length;
+        }
+        for (const fr of packed.frames) {
+          spriteManifest.push({ key: fr.key, atlas: fr.atlas, x: fr.x, y: fr.y, w: fr.w, h: fr.h });
+        }
+        const packedKeys = new Set(packed.frames.map((f) => f.key));
+        for (const r of frameRecs) if (packedKeys.has(r.key)) bytesBefore += Math.floor(r.dataUrl.length * 0.75);
+        const leftover = new Set(packed.leftover);
+        singleSprites = usedSprites.filter((r) => r.key.indexOf("animframe_") !== 0 || leftover.has(r.key));
+      } catch (err) {
+        console.warn("[export] Atlas packing failed, shipping frames as individual files:", err);
+        singleSprites = usedSprites;
+      }
+    }
+  }
+
   // Images are converted a few at a time (the browser encodes them off the
   // main thread), which is much faster than one after another for big games.
   {
-    const results = new Array(usedSprites.length);
+    const results = new Array(singleSprites.length);
     let next = 0;
     let done = 0;
     const worker = async () => {
-      while (next < usedSprites.length) {
+      while (next < singleSprites.length) {
         const i = next++;
-        results[i] = await transcodeImage(usedSprites[i].dataUrl);
+        results[i] = await transcodeImage(singleSprites[i].dataUrl);
         done++;
-        if (done % 5 === 0 || done === usedSprites.length) {
-          onProgress("Converting images\u2026 (" + done + "/" + usedSprites.length + ")");
+        if (done % 5 === 0 || done === singleSprites.length) {
+          onProgress("Converting images\u2026 (" + done + "/" + singleSprites.length + ")");
         }
       }
     };
-    if (usedSprites.length) onProgress("Converting images\u2026 (0/" + usedSprites.length + ")");
-    await Promise.all(Array.from({ length: Math.min(3, usedSprites.length) }, worker));
-    for (let i = 0; i < usedSprites.length; i++) {
-      const rec = usedSprites[i];
+    if (singleSprites.length) onProgress("Converting images\u2026 (0/" + singleSprites.length + ")");
+    await Promise.all(Array.from({ length: Math.min(3, singleSprites.length) }, worker));
+    for (let i = 0; i < singleSprites.length; i++) {
+      const rec = singleSprites[i];
       const result = results[i];
       results[i] = null; // free as we go
       const filename = safeAssetFilename(rec.key, result.ext);
@@ -837,7 +974,7 @@ export async function buildExport(game, options) {
       const result = audioResults[i];
       const filename = safeAssetFilename(rec.key, result.ext);
       audioFolder.file(filename, result.bytes);
-      audioManifest.push({ key: rec.key, file: "assets/audio/" + filename });
+      audioManifest.push({ key: rec.key, file: "assets/audio/" + filename, stream: result.bytes.length > AUDIO_STREAM_THRESHOLD_BYTES });
       bytesBefore += result.originalBytes;
       bytesAfter += result.bytes.length;
     }
@@ -913,8 +1050,25 @@ export async function buildExport(game, options) {
 
   // --- 6. Bootstrap files ---
   onProgress("Writing game files…");
-  zip.file("main.js", buildMainJs({ spriteManifest, audioManifest, gameFps: 0, navAreaNames: getNavAreaNames() }));
-  zip.file("index.html", buildIndexHtml(title, format === "pwa", hasFavicon));
+  const sceneAssets = buildSceneAssetLists(
+    allScenes,
+    activeScene ? activeScene.id : null,
+    game.getAllPrefabs(),
+    usedSpriteKeys,
+    usedAudioKeys,
+    new Set(spriteManifest.map((e) => e.key)),
+    new Set(audioManifest.map((e) => e.key))
+  );
+  zip.file("main.js", buildMainJs({ spriteManifest, audioManifest, sceneAssets, gameFps: 0, navAreaNames: getNavAreaNames() }));
+  zip.file(
+    "index.html",
+    buildIndexHtml(
+      title,
+      format === "pwa",
+      hasFavicon,
+      ["./main.js"].concat(RUNTIME_FILES.filter((f) => /\.js$/.test(f)).map((f) => "./runtime/" + f))
+    )
+  );
   zip.file(
     "EXPORT_INFO.txt",
     buildExportInfo({

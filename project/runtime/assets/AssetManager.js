@@ -135,6 +135,25 @@ export function registerLazyTexture(key, file) {
 }
 
 /**
+ * Atlas sheets (exported builds): one shared BaseTexture per sheet file, so
+ * every frame cut from it shares ONE download, ONE decode and ONE GPU
+ * texture. Frames are just rectangles of that base.
+ * @type {Map<string, PIXI.BaseTexture>}
+ */
+const _atlasBases = new Map();
+
+/**
+ * Registers a frame that lives inside an atlas sheet. Nothing loads until
+ * resolveTexture() first asks for the key (or a preload does).
+ * @param {string} key
+ * @param {string} atlasFile URL of the atlas image
+ * @param {number} x @param {number} y @param {number} w @param {number} h
+ */
+export function registerLazyAtlasFrame(key, atlasFile, x, y, w, h) {
+  _lazyTextureFiles.set(key, { atlas: atlasFile, x, y, w, h });
+}
+
+/**
  * Resolve a spriteKey to a PIXI.Texture, generating a placeholder shape
  * texture the first time an unknown built-in key is requested. A null
  * key or any key that isn't a known built-in / imported asset resolves
@@ -181,7 +200,18 @@ export function resolveTexture(key) {
 
   if (_lazyTextureFiles.has(key)) {
     try {
-      const lazy = PIXI.Texture.from(_lazyTextureFiles.get(key));
+      const src = _lazyTextureFiles.get(key);
+      let lazy;
+      if (src && typeof src === "object") {
+        let base = _atlasBases.get(src.atlas);
+        if (!base || base.destroyed) {
+          base = PIXI.BaseTexture.from(src.atlas);
+          _atlasBases.set(src.atlas, base);
+        }
+        lazy = new PIXI.Texture(base, new PIXI.Rectangle(src.x, src.y, src.w, src.h));
+      } else {
+        lazy = PIXI.Texture.from(src);
+      }
       _textureCache.set(key, lazy);
       return lazy;
     } catch (err) {
@@ -248,8 +278,14 @@ export function preloadTextures(keys, opts) {
     (k) => _lazyTextureFiles.has(k) || _textureCache.has(k)
   );
   if (!queue.length) return Promise.resolve();
+  const total = queue.length;
+  let finished = 0;
   const worker = async () => {
-    while (queue.length) await waitForTexture(queue.shift(), perTextureMs);
+    while (queue.length) {
+      await waitForTexture(queue.shift(), perTextureMs);
+      finished++;
+      if (typeof o.onProgress === "function") { try { o.onProgress(finished, total); } catch (_) {} }
+    }
   };
   const all = Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
   const cap = new Promise((resolve) => setTimeout(resolve, timeoutMs));
@@ -408,6 +444,81 @@ export function registerAudio(key, dataUrl) {
 export function resolveAudioSrc(key) {
   if (!key) return null;
   return _audioCache.get(key) || null;
+}
+
+// ── Decoded audio buffers (zero-latency one-shots) ─────────────────────
+// A fresh `new Audio(src)` per one-shot has to fetch + decode before it can
+// sound. From a data: URL (Play mode) that is near-instant; from a real file
+// (exported build) it is late or dropped, so animation-timed sounds (steps,
+// swings, hits) lag or never play. Decoding each clip ONCE into an
+// AudioBuffer makes every later playOnce() start immediately, even several
+// at once, in Play mode and in every export alike.
+let _audioCtx = null;
+const _audioBuffers = new Map();
+const _audioDecoding = new Map();
+/** Long clips (music) are streamed by the element path, never decoded whole into RAM. */
+const _streamAudio = new Set();
+export function markAudioStreaming(key) { _streamAudio.add(key); }
+
+export function getAudioContext() {
+  if (_audioCtx) return _audioCtx;
+  try {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (Ctor) _audioCtx = new Ctor({ latencyHint: "interactive" });
+  } catch (_) { _audioCtx = null; }
+  return _audioCtx;
+}
+
+/** Call from a real user gesture (tap/click/key) so playback is allowed. */
+export function resumeAudioContext() {
+  const ctx = getAudioContext();
+  if (ctx && ctx.state !== "running") { try { ctx.resume(); } catch (_) {} }
+  return ctx;
+}
+
+function decodeAudioKey(key) {
+  if (_streamAudio.has(key)) return Promise.resolve(null);
+  if (_audioBuffers.has(key)) return Promise.resolve(_audioBuffers.get(key));
+  if (_audioDecoding.has(key)) return _audioDecoding.get(key);
+  const src = resolveAudioSrc(key);
+  const ctx = getAudioContext();
+  if (!src || !ctx) return Promise.resolve(null);
+  const job = fetch(src)
+    .then((r) => r.arrayBuffer())
+    .then((bytes) => new Promise((resolve, reject) => {
+      // callback form too: older Safari has no promise-returning decodeAudioData
+      const p = ctx.decodeAudioData(bytes, resolve, reject);
+      if (p && typeof p.then === "function") p.then(resolve, reject);
+    }))
+    .then((buf) => { _audioBuffers.set(key, buf); return buf; })
+    .catch((err) => { console.warn("[audio] Could not decode clip, falling back to streaming playback:", key, err); return null; })
+    .then((buf) => { _audioDecoding.delete(key); return buf; });
+  _audioDecoding.set(key, job);
+  return job;
+}
+
+/**
+ * Returns the decoded buffer for `key` if ready; otherwise starts decoding it
+ * (so a later call succeeds) and returns null — callers fall back to the
+ * normal element path for that one early call.
+ */
+export function getAudioBuffer(key) {
+  if (!key) return null;
+  const hit = _audioBuffers.get(key);
+  if (hit) return hit;
+  if (_streamAudio.has(key)) return null;
+  decodeAudioKey(key);
+  return null;
+}
+
+/** Decodes a batch up front (boot). Never rejects; capped by timeoutMs. */
+export function preloadAudioBuffers(keys, opts) {
+  const o = opts || {};
+  const list = Array.from(new Set(keys || []));
+  if (!list.length) return Promise.resolve();
+  const all = Promise.all(list.map((k) => decodeAudioKey(k)));
+  const cap = new Promise((resolve) => setTimeout(resolve, o.timeoutMs || 10000));
+  return Promise.race([all, cap]).then(() => undefined);
 }
 
 export function clearAudioCache() {

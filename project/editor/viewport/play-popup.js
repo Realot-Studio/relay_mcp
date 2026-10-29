@@ -372,6 +372,12 @@ async function boot() {
     game.loadAllScenes(payload.allScenes);
   }
 
+  // Prefab catalogue — lets pool.create("Name") / pool.get("Name") clone a
+  // prefab by name in Play mode, exactly like the editor has it.
+  if (payload.prefabs && payload.prefabs.length && game.restoreProjectPrefabs) {
+    game.restoreProjectPrefabs(payload.prefabs);
+  }
+
   game.loadFromData(sceneData);
 
   // Applied once, right here, at the moment Play was pressed — this
