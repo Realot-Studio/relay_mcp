@@ -1,13 +1,13 @@
 /**
  * runtime/pooling/ObjectPool.js
  *
- * Unity-style object pooling (UnityEngine.Pool.ObjectPool<T>) for entities.
+ * Object pooling for entities.
  *
  * Why: spawn()/destroy() in a hot loop (bullets, hit effects, coins) builds a
  * brand-new entity, sprite and physics body every time and throws them all
  * away again, which causes hitches and garbage-collection spikes. A pool
  * builds a fixed set once, then just switches them off (release) and back on
- * (get) — the same idea as Unity's GameObject.SetActive(false) pooling.
+ * (get).
  *
  * HOW A "SWITCHED OFF" OBJECT BEHAVES (this is the engine's own behaviour for
  * `entity.active = false`, nothing pool-specific):
@@ -17,9 +17,9 @@
  *   - Switching it back on rebuilds the sprite/body from the components'
  *     stored data, at the Transform position.
  *
- * Script lifecycle added for pooled objects (Unity names):
+ * Script lifecycle added for pooled objects:
  *   onEnable()  — every time get() switches the object on (before onStart on
- *                 its very first use, like Unity's OnEnable)
+ *                 its very first use)
  *   onDisable() — every time release() switches it off
  *
  * RUNTIME-ONLY FILE.
@@ -32,7 +32,7 @@ import { RIGIDBODY_2D } from "../components/Rigidbody2D.js";
 import { SCRIPT } from "../components/Script.js";
 
 const DEFAULT_CAPACITY = 10;
-const DEFAULT_MAX_SIZE = 10000; // same default as Unity's ObjectPool
+const DEFAULT_MAX_SIZE = 10000; // default cap on kept (switched-off) objects
 
 function warn(msg) {
   if (typeof console !== "undefined") console.warn("[pool] " + msg);
@@ -180,8 +180,8 @@ class Pool {
     }
     const ctx = this.manager.api.createEntityContext(entity);
     this.manager.api._poolLifecycleFn && this.manager.api._poolLifecycleFn(entity, "onDisable");
-    // Unity stops an object's coroutines when it is deactivated; the
-    // equivalent here is cancelling its wait()/repeat()/tween() timers.
+    // A switched-off object must not keep running timers: cancel its
+    // wait()/repeat()/tween() timers.
     this.manager.api._poolCancelFn && this.manager.api._poolCancelFn(entity.id);
     resetRigidbody(entity);
     if (this.resetComponents) restoreFromSnapshot(entity, this.snapshots.get(entity.id));
@@ -190,7 +190,7 @@ class Pool {
       try { this.opts.onRelease.call(ctx, ctx); } catch (err) { console.error("[pool] onRelease threw:", err); }
     }
     if (this.inactive.length >= this.maxSize) {
-      // Pool is full: really destroy it (Unity's actionOnDestroy path).
+      // Pool is full: really destroy it (onDestroy path).
       if (typeof this.opts.onDestroy === "function") {
         try { this.opts.onDestroy.call(ctx, ctx); } catch (err) { console.error("[pool] onDestroy threw:", err); }
       }
@@ -203,7 +203,7 @@ class Pool {
     return true;
   }
 
-  /** Destroys every switched-off object (Unity's pool.Clear()). Objects still in use are untouched. */
+  /** Destroys every switched-off object (pool.clear()). Objects still in use are untouched. */
   clear() {
     for (const e of this.inactive) {
       if (typeof this.opts.onDestroy === "function") {
@@ -261,7 +261,7 @@ export class PoolManager {
   }
 
   /**
-   * pool.create(name, options) — Unity's `new ObjectPool<T>(...)`.
+   * pool.create(name, options) — makes a pool.
    * options:
    *   source           prefab name, entity name, or an entity (what to clone) — OR —
    *   createFunc       function returning a new entity (e.g. () => spawn("Bullet"))
@@ -270,7 +270,7 @@ export class PoolManager {
    *   collectionCheck  warn on releasing the same object twice (default true)
    *   resetComponents  on release, restore tint/opacity/flip/animation/tag etc. to how the
    *                    object was first built (default true; Script variables are not touched — use onEnable)
-   *   onGet(obj) / onRelease(obj) / onDestroy(obj)   Unity's actionOnGet/Release/Destroy
+   *   onGet(obj) / onRelease(obj) / onDestroy(obj)   called on get / release / real destroy
    * Returns the pool handle (get, release, prewarm, clear, countActive, countInactive, countAll).
    */
   create(name, options) {

@@ -724,7 +724,7 @@ const NAV_AGENT_API = [
 const LIFECYCLE_API = [
   { label: "onStart()", detail: "Called once before the first onUpdate", insert: "onStart()", kind: "Function" },
   { label: "onClone()", detail: "Called once for entities created by spawn()", insert: "onClone()", kind: "Function" },
-  { label: "onEnable()", detail: "Pooled objects: called every time pool.get() switches this object on (before onStart the first time, like Unity's OnEnable). Reset your variables here.", insert: "onEnable()", kind: "Function" },
+  { label: "onEnable()", detail: "Pooled objects: called every time pool.get() switches this object on (before onStart the first time). Reset your variables here.", insert: "onEnable()", kind: "Function" },
   { label: "onDisable()", detail: "Pooled objects: called every time this object is released back to its pool. Its wait()/repeat()/tween() timers are cancelled right after.", insert: "onDisable()", kind: "Function" },
   { label: "onUpdate(dt)", detail: "Called every frame", insert: "onUpdate(dt)", kind: "Function" },
   { label: "onFixedUpdate(dt)", detail: "Called at a fixed physics rate", insert: "onFixedUpdate(dt)", kind: "Function" },
@@ -776,7 +776,7 @@ const THIS_SHORTCUTS_BASE = [
   { label: "tag", detail: "The entity's tag, set in the Inspector's Tag dropdown (read/write)", insert: "tag", kind: "Property" },
   { label: "id", detail: "Stable unique id for this exact entity (read-only) — unlike name/tag, never shared with any other entity, even clones. Save it (e.g. from spawn()'s return value) to findById() this exact entity later.", insert: "id", kind: "Property" },
   { label: "state", detail: 'State machine — this.state.current, this.state.previous, this.state.change(name). Needs no component; works on every entity.', insert: "state.", kind: "Module" },
-  { label: "releaseToPool(delay)", detail: "Return this pooled object to the pool it came from (Unity: pool.Release(this)). It is switched off and reused by the next pool.get(). Optional delay in seconds, e.g. this.releaseToPool(2). Fires onDisable().", insert: "releaseToPool(${1})", kind: "Method", snippet: true },
+  { label: "releaseToPool(delay)", detail: "Return this pooled object to the pool it came from. It is switched off and reused by the next pool.get(). Optional delay in seconds, e.g. this.releaseToPool(2). Fires onDisable().", insert: "releaseToPool(${1})", kind: "Method", snippet: true },
   { label: "isPooled", detail: "True if this object was created by a pool (pool.create / pool.get). Read-only.", insert: "isPooled", kind: "Property" },
   { label: "destroy()", detail: "Destroy this entity — removed at end of frame, onDestroy() fires just before removal", insert: "destroy()", kind: "Method" },
   { label: "destroyed", detail: "True once destroy() has been called (read-only)", insert: "destroyed", kind: "Property" },
@@ -841,7 +841,7 @@ const GLOBAL_APIS = [
   { label: "findInRadius(x, y, radius, opts)", detail: 'Find every entity within radius world units of (x, y), nearest first. Optionally narrow with { name: "..." } or { tag: "..." }. E.g. findInRadius(this.x, this.y, 200, { tag: "Enemy" })', insert: "findInRadius(${1:x}, ${2:y}, ${3:radius})", kind: "Function", snippet: true },
   { label: "scene", detail: "Scene utilities: scene.current, scene.findFirst(), scene.load(), scene.restart(), scene.pause(), scene.resume()", insert: "scene.", kind: "Module" },
   { label: "physics", detail: "Physics utilities: physics.raycast(x1,y1,x2,y2,opts), physics.layer(n)", insert: "physics.", kind: "Module" },
-  { label: "pool", detail: "Object pooling (like Unity's ObjectPool): pool.create(name, opts), pool.get(name, x, y), pool.release(obj). Reuse bullets/effects instead of spawn()/destroy() every time.", insert: "pool.", kind: "Module" },
+  { label: "pool", detail: "Object pooling: pool.create(name, opts), pool.get(name, x, y), pool.release(obj). Reuse bullets/effects instead of spawn()/destroy() every time.", insert: "pool.", kind: "Module" },
   { label: "nav", detail: "NavWorld2D pathfinding: nav.findPath(x1,y1,x2,y2,opts), nav.isWalkable(x,y), nav.bake()", insert: "nav.", kind: "Module" },
   { label: "input", detail: "Input queries: input.keyDown(key), input.keyPressed(key)", insert: "input.", kind: "Module" },
   { label: "mouse", detail: "Mouse position + buttons: mouse.x, mouse.y, mouse.down(button), mouse.isOver(name), mouse.clickedOn(name)", insert: "mouse.", kind: "Module" },
@@ -888,7 +888,7 @@ const PHYSICS_API = [
 // create() returns a pool handle with: get(x, y) / get({x,y,rotation}),
 // release(obj), prewarm(n), clear(), countActive, countInactive, countAll.
 const POOL_API = [
-  { label: "create(name, options)", detail: "Create a pool (Unity: new ObjectPool). options: { source, createFunc, defaultCapacity, maxSize, collectionCheck, resetComponents, onGet, onRelease, onDestroy } (press Ctrl+Space inside the { } to see each one) — or createFunc: () => spawn(\"Bullet\"). Returns a handle: handle.get(x, y), handle.release(obj), handle.prewarm(n), handle.clear(), handle.countActive / countInactive / countAll. Objects start switched off; pooled scripts get onEnable()/onDisable().", insert: 'create("${1:Bullets}", { source: "${2:Bullet}", defaultCapacity: ${3:20}, maxSize: ${4:100} })', kind: "Method", snippet: true },
+  { label: "create(name, options)", detail: "Create a pool. options: { source, createFunc, defaultCapacity, maxSize, collectionCheck, resetComponents, onGet, onRelease, onDestroy } (press Ctrl+Space inside the { } to see each one) — or createFunc: () => spawn(\"Bullet\"). Returns a handle: handle.get(x, y), handle.release(obj), handle.prewarm(n), handle.clear(), handle.countActive / countInactive / countAll. Objects start switched off; pooled scripts get onEnable()/onDisable().", insert: 'create("${1:Bullets}", { source: "${2:Bullet}", defaultCapacity: ${3:20}, maxSize: ${4:100} })', kind: "Method", snippet: true },
   { label: "get(name, x, y)", detail: "Take an object from the pool called `name`, switch it on at (x, y) and return it. The pool is created on first use if `name` is a prefab/entity name. Recycles a switched-off object when one is free, otherwise creates a new one.", insert: 'get("${1:Bullet}", ${2:this.x}, ${3:this.y})', kind: "Method", snippet: true },
   { label: "release(obj)", detail: "Put an object back in the pool it came from: it is switched off (no drawing, physics or onUpdate) and kept for the next get(). Fires onDisable(). Same as obj.releaseToPool().", insert: "release(${1:obj})", kind: "Method", snippet: true },
   { label: "find(name)", detail: "Look up a pool created earlier with pool.create(name). Returns its handle, or null.", insert: 'find("${1:Bullets}")', kind: "Method", snippet: true },
@@ -903,9 +903,9 @@ const POOL_CREATE_OPTS_API = [
   { label: "maxSize", detail: "Most switched-off objects the pool keeps. A release beyond this really destroys the object. Default 10000.", insert: "maxSize: ${1:100}", kind: "Property", snippet: true },
   { label: "collectionCheck", detail: "true (default) = warn in the console when the same object is released twice. Set false to silence it.", insert: "collectionCheck: ${1:true}", kind: "Property", snippet: true },
   { label: "resetComponents", detail: "true (default) = when released, every component (tint, opacity, flip, animation, tag…) goes back to how the object was first built. Set false to let objects keep their changes. Script variables are never reset — use onEnable().", insert: "resetComponents: ${1:true}", kind: "Property", snippet: true },
-  { label: "onGet", detail: "Called every time get() hands an object out (Unity's actionOnGet). onGet(obj) { … }", insert: "onGet(obj) {\n  $0\n}", kind: "Method", snippet: true },
-  { label: "onRelease", detail: "Called every time an object is put back (Unity's actionOnRelease). onRelease(obj) { … }", insert: "onRelease(obj) {\n  $0\n}", kind: "Method", snippet: true },
-  { label: "onDestroy", detail: "Called when the pool really destroys an object: pool full on release, or clear() (Unity's actionOnDestroy). onDestroy(obj) { … }", insert: "onDestroy(obj) {\n  $0\n}", kind: "Method", snippet: true },
+  { label: "onGet", detail: "Called every time get() hands an object out. onGet(obj) { … }", insert: "onGet(obj) {\n  $0\n}", kind: "Method", snippet: true },
+  { label: "onRelease", detail: "Called every time an object is put back. onRelease(obj) { … }", insert: "onRelease(obj) {\n  $0\n}", kind: "Method", snippet: true },
+  { label: "onDestroy", detail: "Called when the pool really destroys an object: pool full on release, or clear(). onDestroy(obj) { … }", insert: "onDestroy(obj) {\n  $0\n}", kind: "Method", snippet: true },
 ];
 
 // Members of the handle returned by pool.create() / pool.find().
@@ -3577,7 +3577,7 @@ function _provideCompletionItemsImpl(monaco, model, position) {
       // isPointerOver/isClicked above).
       const snippetsBase = [
         { label: "function onStart()", detail: "Called once before the first onUpdate — use for initialization", insert: "onStart() {\n  $1\n}" },
-        { label: "function onEnable()", detail: "Pooled objects: runs every time pool.get() switches this object on — reset your variables here (Unity's OnEnable).", insert: "onEnable() {\n  $1\n}" },
+        { label: "function onEnable()", detail: "Pooled objects: runs every time pool.get() switches this object on — reset your variables here.", insert: "onEnable() {\n  $1\n}" },
         { label: "function onDisable()", detail: "Pooled objects: runs every time this object is released back to its pool.", insert: "onDisable() {\n  $1\n}" },
         { label: "function onClone()", detail: "Called once, right before onStart(), but ONLY on entities created by spawn(). Never fires for entities placed in the scene.", insert: "onClone() {\n  $1\n}" },
         { label: "function onUpdate(dt)", detail: "Called every frame. dt = seconds since last frame (use for movement)", insert: "onUpdate(dt) {\n  $1\n}" },

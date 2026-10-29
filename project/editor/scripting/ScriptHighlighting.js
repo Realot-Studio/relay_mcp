@@ -122,8 +122,6 @@ const ENGINE_MEMBERS = [
   "navMoveToward",
   // Object pooling (pool.create/get/release/find, pool handle, this.releaseToPool — see ObjectPool.js)
   "releaseToPool", "isPooled", "prewarm", "countActive", "countInactive", "countAll",
-  // pool.create() option names
-  "source", "createFunc", "defaultCapacity", "maxSize", "collectionCheck", "resetComponents", "onGet", "onRelease",
   // Car-controller counterpart: NavWorld2D pathing + Car handling (see
   // EntityContext.navDriveToward in ScriptAPI.js)
   "navDriveToward",
@@ -487,6 +485,60 @@ export function applyRealotDecorations(monaco, editorInstance, model, scriptName
   // directly after ".rigidbody.", never as a bare ".type".
   const rigidbodyTypePattern = "\\.rigidbody\\s*\\.\\s*(type)\\b";
   addMatches(new RegExp(rigidbodyTypePattern, "g"), "realot-token-member");
+
+  // ── Object pooling ───────────────────────────────────────────────────────
+  // pool.create / pool.get / pool.release / pool.find
+  addMatches(/\bpool\s*\.\s*(create|get|release|find)\b/g, "realot-token-member");
+
+  // Handle variables: `var bullets = pool.create(...)` → bullets.get / .release / .prewarm / .clear / counts
+  {
+    const handleNames = new Set();
+    const handleRx = /(\w+)\s*=\s*pool\s*\.\s*(?:create|find)\s*\(/g;
+    let hm;
+    while ((hm = handleRx.exec(text))) handleNames.add(hm[1]);
+    if (handleNames.size) {
+      const handlePattern = "\\b(?:" + Array.from(handleNames).join("|") + ")\\s*\\.\\s*(get|release|prewarm|clear|countActive|countInactive|countAll)\\b";
+      addMatches(new RegExp(handlePattern, "g"), "realot-token-member");
+    }
+  }
+
+  // Option keys directly inside pool.create("Name", { ... }) — only at the top level of
+  // that literal, so ordinary fields named `source` / `maxSize` elsewhere are left alone.
+  {
+    const POOL_OPTION_KEYS = new Set([
+      "source", "createFunc", "defaultCapacity", "maxSize", "collectionCheck",
+      "resetComponents", "onGet", "onRelease", "onDestroy",
+    ]);
+    const callRx = /\bpool\s*\.\s*create\s*\(/g;
+    let cm;
+    while ((cm = callRx.exec(text))) {
+      let paren = 1;
+      let brace = 0;
+      const start = cm.index + cm[0].length;
+      for (let i = start; i < text.length; i++) {
+        if (!codeMask[i]) continue; // skip strings / comments
+        const ch = text[i];
+        if (ch === "(" || ch === "[") paren++;
+        else if (ch === ")" || ch === "]") { paren--; if (paren <= 0) break; }
+        else if (ch === "{") brace++;
+        else if (ch === "}") { brace--; if (brace <= 0) break; }
+        else if (brace === 1 && paren === 1 && /[A-Za-z_$]/.test(ch) && !/[\w$]/.test(text[i - 1] || " ")) {
+          const wm = /^[A-Za-z_$][\w$]*/.exec(text.slice(i));
+          const word = wm[0];
+          const after = text.slice(i + word.length).match(/^\s*([:(])/);
+          if (POOL_OPTION_KEYS.has(word) && after) {
+            const pos = model.getPositionAt(i);
+            const endPos = model.getPositionAt(i + word.length);
+            decorations.push({
+              range: new monaco.Range(pos.lineNumber, pos.column, endPos.lineNumber, endPos.column),
+              options: { inlineClassName: "realot-token-member" },
+            });
+          }
+          i += word.length - 1;
+        }
+      }
+    }
+  }
 
   const lifecyclePattern = "\\b(" + ENGINE_LIFECYCLE.join("|") + ")\\b";
   addMatches(new RegExp(lifecyclePattern, "g"), "realot-token-lifecycle");

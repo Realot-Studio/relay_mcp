@@ -2321,7 +2321,7 @@ class EntityContext {
   }
 
   /**
-   * Puts this object back into the pool it came from (Unity: pool.Release(this)).
+   * Puts this object back into the pool it came from.
    * The object is switched off (no drawing, no physics, no onUpdate) and kept
    * for the next pool.get(). Optional `delay` (seconds) releases it later, e.g.
    *   this.releaseToPool(2);   // bullet returns to its pool after 2 seconds
@@ -2900,7 +2900,7 @@ export class ScriptAPI {
     this._poolLifecycleFn = null;
     /** Set by ScriptSystem constructor: cancels an entity's wait()/repeat()/tween() timers when it is released to a pool. */
     this._poolCancelFn = null;
-    /** Unity-style object pools (pool.create / pool.get / pool.release) — see pooling/ObjectPool.js */
+    /** Object pools (pool.create / pool.get / pool.release) — see pooling/ObjectPool.js */
     this._pools = new PoolManager(this);
     /** Set by ScriptSystem constructor (bound fireStateChange) to back
      *  every entity's this.state.change(name) — see StateAPI.js and
@@ -4190,7 +4190,7 @@ export class ScriptAPI {
       },
       /**
        * Object pooling — reuse objects instead of spawn()/destroy() every time
-       * (same idea as Unity's ObjectPool). Create a pool once, then get() and
+       * Create a pool once, then get() and
        * release() objects from it:
        *   var bullets = pool.create("Bullets", { source: "Bullet", defaultCapacity: 20, maxSize: 100 });
        *   var b = bullets.get(this.x, this.y);   // switched on, placed at x,y

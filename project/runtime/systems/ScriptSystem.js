@@ -809,7 +809,7 @@ export class ScriptSystem {
       }
 
       // A pooled object's FIRST get(): its scripts only just compiled, so the
-      // onEnable() that get() asked for runs here, before onStart (Unity order).
+      // onEnable() that get() asked for runs here, before onStart.
       if (inst.enabled && entity.__poolEnable && inst.handlers.onEnable) {
         try {
           this._invoke(inst, inst.handlers.onEnable);
