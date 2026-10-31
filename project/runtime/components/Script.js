@@ -16,12 +16,21 @@
 export const SCRIPT = "Script";
 
 export class Script {
-  constructor({ scriptName = "NewScript", source = "", enabled = true } = {}) {
+  constructor({ scriptName = "NewScript", source = "", enabled = true, inspectValues = {} } = {}) {
     /** Display name shown in the Inspector + script editor tabs. */
     this.scriptName = scriptName;
     /** Full JavaScript source — compiled at runtime via new Function(). */
     this.source = source;
     /** Whether this script instance runs at play time. */
     this.enabled = enabled;
+    /**
+     * Per-entity values for `inspect let x = ...` variables declared in the
+     * script (see runtime/scripting/InspectSyntax.js): { variableName: value }.
+     * A variable with no entry uses the default written in the script.
+     */
+    this.inspectValues =
+      inspectValues && typeof inspectValues === "object" && !Array.isArray(inspectValues)
+        ? { ...inspectValues }
+        : {};
   }
 }

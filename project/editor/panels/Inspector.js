@@ -15,6 +15,85 @@ import { tabBtn, row, numInput, vec3Input, vec2Input, dropdownInput, section } f
  * placed into HTML built by string concatenation. Project files can come from
  * other people, so never insert these raw.
  */
+/**
+ * Rows for every `inspect let x = ...` variable the script declares
+ * (see runtime/scripting/InspectSyntax.js). The control is chosen from the
+ * type detected in the script; values are stored per entity in
+ * Script.inspectValues and applied when the script is compiled for play.
+ */
+function inspectVarRows(script) {
+  let decls;
+  try { decls = parseInspectVars(script.source || ""); } catch (_) { return ""; }
+  if (!decls.length) return "";
+  const values = script.inspectValues || {};
+  const seen = new Set();
+  let html = '<div style="margin:8px 0 2px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.08);color:#8a93a0;font-size:11px;letter-spacing:.04em;text-transform:uppercase;">Script Variables</div>';
+  for (const d of decls) {
+    if (seen.has(d.name)) continue;
+    seen.add(d.name);
+    if (!d.supported) {
+      html += '<div style="padding:3px 4px;color:#c0863a;font-size:11px;">' +
+        esc(d.name) + ": can't be shown in the Inspector — start it with a number, string, true/false, \"#rrggbb\" color, { x, y } or an array of numbers/strings." +
+        "</div>";
+      continue;
+    }
+    const overridden = Object.prototype.hasOwnProperty.call(values, d.name);
+    const res = overridden ? coerceInspectValue(d, values[d.name]) : { ok: false };
+    const isSet = overridden && res.ok;
+    const cur = isSet ? res.value : d.defaultValue;
+    const field = "Script.inspect." + d.name;
+    const f = ' data-field="' + esc(field) + '"';
+    let control = "";
+    switch (d.type) {
+      case "number":
+      case "int": {
+        const attrs = ' step="' + esc(d.step != null ? d.step : 1) + '"' +
+          (d.min != null ? ' min="' + esc(d.min) + '"' : "") +
+          (d.max != null ? ' max="' + esc(d.max) + '"' : "");
+        control = '<div class="numinput"><input type="number" value="' + esc(cur) + '"' + attrs + f + " /></div>";
+        if (d.slider) {
+          control += '<input type="range" value="' + esc(cur) + '"' + attrs + f + ' style="width:100%;margin-top:4px;" />';
+        }
+        break;
+      }
+      case "string":
+        control = '<input type="text" class="num-input" value="' + esc(cur) + '"' + f + ' style="width:100%;box-sizing:border-box;" />';
+        break;
+      case "text":
+        control = '<textarea class="num-input" rows="3"' + f + ' style="width:100%;box-sizing:border-box;resize:vertical;">' + esc(cur) + "</textarea>";
+        break;
+      case "boolean":
+        control = '<input type="checkbox"' + (cur ? " checked" : "") + f + ' style="accent-color:#2C5D87;margin:0;" />';
+        break;
+      case "color": {
+        let hex = String(cur);
+        if (/^#[0-9a-f]{3,4}$/i.test(hex)) hex = "#" + hex.slice(1, 4).split("").map((c) => c + c).join("");
+        hex = hex.slice(0, 7);
+        control = '<input type="color" class="color-swatch-input" value="' + esc(hex) + '"' + f + " />";
+        break;
+      }
+      case "vector2":
+        control = vec2Input(cur.x, cur.y, field);
+        break;
+      case "enum":
+        control = dropdownInput(d.options.map((o) => ({ value: String(o), label: String(o) })), String(cur), field);
+        break;
+      case "array":
+        control = '<input type="text" class="num-input" value="' + esc((cur || []).join(", ")) + '"' + f +
+          ' placeholder="comma, separated, ' + (d.arrayOf === "string" ? "text" : "numbers") + '" style="width:100%;box-sizing:border-box;" />';
+        break;
+    }
+    const reset = isSet
+      ? '<button class="animwin-btn" data-action="reset-inspect-var" data-var="' + esc(d.name) + '" title="Reset to the default written in the script" style="margin-left:6px;padding:0 6px;flex:none;">&#8634;</button>'
+      : "";
+    html += row(
+      '<span title="' + esc((d.tooltip ? d.tooltip + " — " : "") + d.kind + " " + d.name + " (" + d.type + ")") + '">' + esc(d.label) + "</span>",
+      '<div style="display:flex;align-items:center;gap:0;width:100%;"><div style="flex:1;min-width:0;">' + control + "</div>" + reset + "</div>"
+    );
+  }
+  return html;
+}
+
 function esc(v) {
   return String(v == null ? "" : v)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -48,6 +127,7 @@ import { NAV_WORLD_2D } from "../../runtime/components/NavWorld2D.js";
 import { NAV_AGENT_2D } from "../../runtime/components/NavAgent2D.js";
 import { getNamedNavAreas } from "../state/NavAreas.js";
 import { SCRIPT } from "../../runtime/components/Script.js";
+import { parseInspectVars, coerceInspectValue } from "../../runtime/scripting/InspectSyntax.js";
 import { ShadowMode } from "../../runtime/systems/LightingQuality.js";
 import { getCameraResolution } from "../../runtime/core/CameraUtils.js";
 import { getSpriteAsset, getAudioAsset, getAllAudioAssets } from "../../runtime/assets/AssetRegistry.js";
@@ -1940,6 +2020,7 @@ export function renderInspector() {
       "code",
       row("Script Name", '<input type="text" class="num-input" value="' + esc(script.scriptName) + '" placeholder="No script — deleted or never assigned" data-field="Script.scriptName" style="width:100%;box-sizing:border-box;" />') +
       row("Enabled", '<input type="checkbox"' + (script.enabled ? " checked" : "") + ' data-action="toggle-script-enabled" />') +
+      inspectVarRows(script) +
       '<div style="padding:6px 0;">' +
       '<button class="animwin-btn" data-action="open-script-editor" style="width:100%;">' + icon("code", 12) + " Open Script Editor</button>" +
       "</div>" +

@@ -84,6 +84,7 @@
 
 import { SCRIPT } from "../components/Script.js";
 import { stripCastSyntax } from "../scripting/CastSyntax.js";
+import { applyInspectValues } from "../scripting/InspectSyntax.js";
 import { resolveTweenEasing } from "../scripting/TweenEasing.js";
 
 const FIXED_TIMESTEP = 1 / 60;
@@ -536,7 +537,7 @@ export class ScriptSystem {
    * bare, exactly like onUpdate() does. No `this.chase()`, no
    * manually stashing `this` into a variable in onStart() required.
    */
-  _compile(scriptName, source) {
+  _compile(scriptName, source, inspectValues) {
     try {
       // Stashed for _formatError()'s missing-component hint lookup — see
       // _scriptSources' doc comment in the constructor. Stored on EVERY
@@ -554,7 +555,10 @@ export class ScriptSystem {
       // is the one place every script passes through on its way to
       // compiling, so this is the only place that needs to know casts
       // exist at all.
-      source = stripCastSyntax(source);
+      // `inspect let x = 5;` (see runtime/scripting/InspectSyntax.js) is also
+      // Realot-only syntax: blank the keyword AND swap in the value this
+      // entity's Inspector holds for each exposed variable.
+      source = stripCastSyntax(applyInspectValues(source, inspectValues));
       const lifecycleNames = [
         "onStart", "onUpdate", "onClick", "onFixedUpdate", "onCollision",
         "onCollisionEnter", "onCollisionStay", "onCollisionExit", "onTriggerEnter", "onTriggerExit",
@@ -763,7 +767,7 @@ export class ScriptSystem {
     const script = entity.getComponent(SCRIPT);
     if (!script || !script.enabled || !script.source) return;
 
-    const factory = this._compile(script.scriptName, script.source);
+    const factory = this._compile(script.scriptName, script.source, script.inspectValues);
     if (!factory) return;
 
     try {

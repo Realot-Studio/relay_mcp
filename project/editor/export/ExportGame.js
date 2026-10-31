@@ -120,6 +120,7 @@ const RUNTIME_FILES = [
   "scene/SceneManager.js",
   "scene/SceneSerializer.js",
   "scripting/CastSyntax.js",
+  "scripting/InspectSyntax.js",
   "scripting/NavAPI.js",
   "scripting/SaveStore.js",
   "scripting/ScriptAPI.js",

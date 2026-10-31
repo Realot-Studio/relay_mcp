@@ -317,3 +317,7 @@ function _blank(match) {
   return out;
 }
 
+
+// Shared with runtime/scripting/InspectSyntax.js, which needs the same
+// "which characters are real code (not string / comment / regex)" map.
+export { _codeSpans as scanCodeSpans };

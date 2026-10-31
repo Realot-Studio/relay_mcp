@@ -836,6 +836,8 @@ const THIS_SHORTCUTS_CAR_NAV_AGENT = [
 ];
 
 const GLOBAL_APIS = [
+  { label: "inspect", detail: "Expose the next variable in the Inspector (like Godot's @export). The type is detected from the value: number, string, boolean, color (\"#rrggbb\"), Vector2 ({ x, y }), array.\n  inspect let speed = 5;", insert: "inspect let ${1:name} = ${2:0};", kind: "Keyword", snippet: true },
+  { label: "inspect({ options })", detail: "Inspector variable with options: label, tooltip, min, max, step, slider, options (dropdown), type.\n  inspect({ min: 0, max: 100, slider: true }) let hp = 100;", insert: "inspect({ ${1:min: 0, max: 100} }) let ${2:name} = ${3:0};", kind: "Function", snippet: true },
   { label: "findWithTag(tag)", detail: "Find all entities with a tag. Returns an array of live object contexts.", insert: 'findWithTag("', kind: "Function" },
   { label: "findFirst(name)", detail: "Find the first entity with this name. Returns an object, or null if none match.", insert: 'findFirst("', kind: "Function" },
   { label: "findAll(name)", detail: "Find EVERY entity with this name. Returns an array (empty if none match).", insert: 'findAll("', kind: "Function" },
@@ -2952,6 +2954,30 @@ function _provideCompletionItemsImpl(monaco, model, position) {
       };
 
       const suggestions = [];
+
+      // ── inspect({ ... }) option keys ─────────────────────────────────────
+      if (/\binspect\s*\(\s*\{[^}]*$/.test(lineUntil) && !/["'][^"']*$/.test(lineUntil)) {
+        const INSPECT_OPTION_DOCS = {
+          label: "Name shown in the Inspector (default: the variable name, prettified)",
+          tooltip: "Hover text shown in the Inspector",
+          min: "Smallest allowed number",
+          max: "Largest allowed number",
+          step: "Increment for the number field (default 1 for whole numbers, 0.1 otherwise)",
+          slider: "true → show a slider (needs min and max)",
+          options: 'Dropdown choices, e.g. options: ["Idle", "Patrol", "Chase"]',
+          type: '"number" | "int" | "string" | "text" | "boolean" | "color" | "vector2" | "enum" | "array" — only needed to override detection',
+        };
+        for (const key of Object.keys(INSPECT_OPTION_DOCS)) {
+          suggestions.push({
+            label: key,
+            kind: monaco.languages.CompletionItemKind.Property,
+            insertText: key + ": ",
+            detail: INSPECT_OPTION_DOCS[key],
+            range,
+          });
+        }
+        return { suggestions };
+      }
 
       // ── String-argument context ──────────────────────────────────────────
       // Detect patterns like find("  scene.load("  input.keyDown("  .texture="

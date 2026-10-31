@@ -31,6 +31,7 @@
  */
 
 import { stripCastSyntax } from "../../runtime/scripting/CastSyntax.js";
+import { stripInspectSyntax } from "../../runtime/scripting/InspectSyntax.js";
 
 const SYNTAX_OWNER = "realot-js-syntax";
 
@@ -84,7 +85,7 @@ export function refreshSyntaxCheck(monaco, model, scriptName) {
 
   let stripped;
   try {
-    stripped = stripCastSyntax(model.getValue());
+    stripped = stripInspectSyntax(stripCastSyntax(model.getValue()));
   } catch (e) {
     return; // never let a stripping bug break typing
   }

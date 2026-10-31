@@ -55,6 +55,8 @@
 // 6. Everything else (user variables/functions) → Monaco's normal
 //                                identifier color, i.e. left alone entirely.
 
+import { parseInspectVars, INSPECT_OPTION_KEYS } from "../../runtime/scripting/InspectSyntax.js";
+
 const ENGINE_GLOBALS = [
   "findWithTag", "findFirst", "findAll", "findFirstWithTag", "findAllWithTag", "findById", "findInRadius",
   "scene", "physics", "input", "mouse", "touch", "time", "random", "mathx",
@@ -319,6 +321,11 @@ export function defineRealotTheme(monaco) {
       // a distinct green, the same tier as a type annotation would get
       // in a typed language, since that's exactly what these are.
       { token: "realot-cast-type", foreground: "4ec9b0", fontStyle: "bold" },
+      // The `inspect` keyword (Inspector-exposed variable) and the variable
+      // it exposes — a warm pink/orange keyword with a lime variable name so
+      // exposed settings stand out from ordinary variables.
+      { token: "realot-inspect-keyword", foreground: "ff7eb6", fontStyle: "italic bold" },
+      { token: "realot-inspect-var", foreground: "b5e853", fontStyle: "bold" },
     ],
     colors: {},
   });
@@ -540,6 +547,39 @@ export function applyRealotDecorations(monaco, editorInstance, model, scriptName
     }
   }
 
+  // `inspect` / `inspect({...})` before a top-level declaration: color the
+  // keyword, the option keys inside the call, and the exposed variable's name.
+  try {
+    for (const d of parseInspectVars(text)) {
+      const kwStart = model.getPositionAt(d.keywordStart);
+      const kwEnd = model.getPositionAt(d.keywordStart + "inspect".length);
+      decorations.push({
+        range: new monaco.Range(kwStart.lineNumber, kwStart.column, kwEnd.lineNumber, kwEnd.column),
+        options: { inlineClassName: "realot-token-inspect-keyword" },
+      });
+      const nStart = model.getPositionAt(d.nameStart);
+      const nEnd = model.getPositionAt(d.nameEnd);
+      decorations.push({
+        range: new monaco.Range(nStart.lineNumber, nStart.column, nEnd.lineNumber, nEnd.column),
+        options: { inlineClassName: "realot-token-inspect-var" },
+      });
+      if (d.optsStart >= 0) {
+        const optText = text.slice(d.optsStart, d.optsEnd);
+        const keyRx = new RegExp("(?:^|[{,\\s])(" + INSPECT_OPTION_KEYS.join("|") + ")\\s*:", "g");
+        let km;
+        while ((km = keyRx.exec(optText))) {
+          const at = d.optsStart + km.index + km[0].indexOf(km[1]);
+          const a = model.getPositionAt(at);
+          const b = model.getPositionAt(at + km[1].length);
+          decorations.push({
+            range: new monaco.Range(a.lineNumber, a.column, b.lineNumber, b.column),
+            options: { inlineClassName: "realot-token-member" },
+          });
+        }
+      }
+    }
+  } catch (_) { /* highlighting must never break typing */ }
+
   const lifecyclePattern = "\\b(" + ENGINE_LIFECYCLE.join("|") + ")\\b";
   addMatches(new RegExp(lifecyclePattern, "g"), "realot-token-lifecycle");
 
@@ -640,6 +680,8 @@ export function renameRealotDecorations(oldName, newName) {
     ".realot-token-member{color:#9d9dc7!important;}" +
     ".realot-token-lifecycle{color:#c586c0!important;font-weight:600;}" +
     ".realot-token-cast-keyword{color:#569cd6!important;font-style:italic;font-weight:600;}" +
-    ".realot-token-cast-type{color:#4ec9b0!important;font-weight:600;}";
+    ".realot-token-cast-type{color:#4ec9b0!important;font-weight:600;}" +
+    ".realot-token-inspect-keyword{color:#ff7eb6!important;font-style:italic;font-weight:600;}" +
+    ".realot-token-inspect-var{color:#b5e853!important;font-weight:600;}";
   document.head.appendChild(style);
 })();

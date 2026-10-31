@@ -66,6 +66,7 @@ import { syncBackgroundColorLive, switchScene, syncAfterExternalSceneChange } fr
 import { setPlayWindowPaused } from "../viewport/PlayWindow.js";
 import { serializeEntity, instantiateEntity } from "../../runtime/scene/SceneSerializer.js";
 import { SCRIPT, Script } from "../../runtime/components/Script.js";
+import { getInspectableVars, coerceInspectValue } from "../../runtime/scripting/InspectSyntax.js";
 import { createScript, getScriptSource } from "../scripting/ScriptStorage.js";
 import { renameScriptEverywhere, deleteScriptEverywhere } from "../panels/ScriptEditorWindow.js";
 import { openScriptEditor, handleScriptEditorAction } from "../panels/ScriptEditorWindow.js";
@@ -557,6 +558,16 @@ let _lastSceneClick = { id: null, time: 0 };
             pushLog("log", "Created and attached script '" + newScriptName + "' to '" + newEnt.name + "'.");
             openScriptEditor(newScriptName, getScriptSource(newScriptName), editorState.selectedId);
           }
+        }
+        break;
+      }
+      case "reset-inspect-var": {
+        var inspEntity = editorState.world && editorState.world.getEntity(editorState.selectedId);
+        var inspScript = inspEntity && inspEntity.getComponent(SCRIPT);
+        if (inspScript && inspScript.inspectValues && Object.prototype.hasOwnProperty.call(inspScript.inspectValues, t.dataset.var)) {
+          snapshotNow("scene");
+          delete inspScript.inspectValues[t.dataset.var];
+          render();
         }
         break;
       }
@@ -3799,6 +3810,33 @@ function applyFieldChange(field, inputEl) {
       pushLog("error", 'A script named "' + newName.trim() + '" already exists.');
       inputEl.value = oldName; // revert the input so the field doesn't show a name that didn't actually take
     }
+    return;
+  }
+
+  // `inspect let x = ...` variables (see runtime/scripting/InspectSyntax.js):
+  // the value is stored per entity in Script.inspectValues, validated against
+  // the type detected from the script, and baked in when the script compiles.
+  if (field.startsWith("Script.inspect.")) {
+    const inspScript = entity.getComponent(SCRIPT);
+    if (!inspScript) return;
+    const varName = field.slice("Script.inspect.".length);
+    const desc = getInspectableVars(inspScript.source || "").find((d) => d.name === varName);
+    if (!desc) return;
+    let raw;
+    if (inputEl.type === "checkbox") raw = inputEl.checked;
+    else if (desc.type === "vector2") {
+      const wrap = inputEl.closest(".vec3");
+      const xi = wrap && wrap.querySelector('[data-axis="x"]');
+      const yi = wrap && wrap.querySelector('[data-axis="y"]');
+      raw = { x: xi ? parseFloat(xi.value) : NaN, y: yi ? parseFloat(yi.value) : NaN };
+    } else if (desc.type === "array") {
+      const parts = String(inputEl.value).split(",").map((t) => t.trim()).filter((t) => t !== "");
+      raw = desc.arrayOf === "string" ? parts : parts.map(Number);
+    } else raw = inputEl.value;
+    const res = coerceInspectValue(desc, raw);
+    if (!res.ok) return;
+    if (!inspScript.inspectValues || typeof inspScript.inspectValues !== "object") inspScript.inspectValues = {};
+    inspScript.inspectValues[varName] = res.value;
     return;
   }
 
