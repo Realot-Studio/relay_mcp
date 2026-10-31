@@ -41,11 +41,11 @@ function _requireCollider(entity) {
 
 // The only members a script may assign. Everything else in
 // COLLIDER_MEMBERS is read-only (change it in the Inspector).
-const COLLIDER_WRITABLE = new Set(["isTrigger"]);
+const COLLIDER_WRITABLE = new Set(["isTrigger", "rotation", "oneWayDirection"]);
 
 const COLLIDER_MEMBERS = new Set([
   "shape", "width", "height", "radius", "capsuleHalfHeight",
-  "capsuleRadius", "offset", "isTrigger", "isOneWayPlatform", "friction", "restitution",
+  "capsuleRadius", "offset", "rotation", "isTrigger", "isOneWayPlatform", "oneWayDirection", "friction", "restitution",
   "density", "layer", "mask", "isColliding",
 ]);
 
@@ -60,6 +60,16 @@ export function createColliderAPI(entity, scriptApi) {
     get offset() {
       const c = _requireCollider(entity);
       return { x: c.offsetX, y: c.offsetY };
+    },
+    /** Degrees. Rotates ONLY the collider (about its own centre, on top of
+     *  the entity's rotation); the sprite / shape you see does not turn. */
+    get rotation() { return _requireCollider(entity).rotation || 0; },
+    set rotation(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) {
+        throw new Error("this.collider.rotation must be a number of degrees (got " + String(v) + ").");
+      }
+      _requireCollider(entity).rotation = n;
     },
     get isTrigger() { return !!_requireCollider(entity).isTrigger; },
     // Must be a real boolean: a string like "false" is truthy in JS, so
@@ -78,6 +88,16 @@ export function createColliderAPI(entity, scriptApi) {
     // PhysicsWorld.js's _syncCollider does pick up a live change to it
     // (it's a real Collider2D field the Inspector can set), scripts just
     // aren't given a setter for it.
+    /** "Up" (stand on top, pass through from below) or "Down" (solid only
+     *  when hit from below, pass through from above). Only matters while
+     *  isOneWayPlatform is on. Read/write. */
+    get oneWayDirection() { return _requireCollider(entity).oneWayDirection === "Down" ? "Down" : "Up"; },
+    set oneWayDirection(v) {
+      if (v !== "Up" && v !== "Down") {
+        throw new Error('this.collider.oneWayDirection must be "Up" or "Down" (got ' + String(v) + ").");
+      }
+      _requireCollider(entity).oneWayDirection = v;
+    },
     get isOneWayPlatform() { return !!_requireCollider(entity).isOneWayPlatform; },
     get friction() { return _requireCollider(entity).friction; },
     get restitution() { return _requireCollider(entity).restitution; },
@@ -132,7 +152,7 @@ export function createColliderAPI(entity, scriptApi) {
         ), "unknown-api");
       }
       throw _tag(new Error(
-        "this.collider." + key + " is read-only — only isTrigger can be changed from a script. " +
+        "this.collider." + key + " is read-only — only isTrigger, rotation and oneWayDirection can be changed from a script. " +
         "Change other Collider 2D settings in the Inspector."
       ), "unsupported-body-type");
     },

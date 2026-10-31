@@ -173,7 +173,7 @@ export class RenderSystem extends System {
       }
       sprite.x = transform.x;
       sprite.y = transform.y;
-      sprite.rotation = (transform.rotation * Math.PI) / 180;
+      sprite.rotation = ((transform.rotation + (Number(spriteRenderer.visualRotation) || 0)) * Math.PI) / 180;
 
       // Depth-scale: only applied when the scene's fake-3D toggle is on
       // (see Camera.enablePseudo3D doc comment). At transform.z === 0
@@ -289,7 +289,7 @@ export class RenderSystem extends System {
 
       gfx.x = transform.x;
       gfx.y = transform.y;
-      gfx.rotation = (transform.rotation * Math.PI) / 180;
+      gfx.rotation = ((transform.rotation + (Number(shapeRenderer.visualRotation) || 0)) * Math.PI) / 180;
       gfx.scale.set(transform.scaleX, transform.scaleY);
 
       // Same draw-order convention as sprites (see file header).

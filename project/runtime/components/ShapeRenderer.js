@@ -55,6 +55,9 @@ export class ShapeRenderer {
       { x: 0, y: -50 },
     ],
     fillColor = "#3a8ede",
+    // Visual-only rotation in degrees, added to Transform.rotation when
+    // drawing. The collider and physics body are NOT affected.
+    visualRotation = 0,
     opacity = 1,
     outlineEnabled = false,
     outlineColor = "#ffffff",
@@ -71,6 +74,7 @@ export class ShapeRenderer {
     // reasoning as Collider2D.trianglePoints.
     this.trianglePoints = trianglePoints.map((p) => ({ x: p.x, y: p.y }));
     this.fillColor = fillColor;
+    this.visualRotation = Number.isFinite(Number(visualRotation)) ? Number(visualRotation) : 0;
     this.opacity = opacity;
     this.outlineEnabled = outlineEnabled;
     this.outlineColor = outlineColor;

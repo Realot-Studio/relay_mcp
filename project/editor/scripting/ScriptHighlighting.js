@@ -197,7 +197,7 @@ const ENGINE_MEMBERS = [
   // are already covered above (Chat Log/Physics/Light) since this list
   // is matched regardless of which object precedes the dot.
   "shape", "height", "capsuleHalfHeight", "capsuleRadius", "offset",
-  "isTrigger", "isOneWayPlatform", "friction", "restitution", "density", "mask", "isColliding",
+  "isTrigger", "isOneWayPlatform", "oneWayDirection", "friction", "restitution", "density", "mask", "isColliding",
   // Joint (this.joint.* — see JointAPI.js). length/useTexture/textureKey/
   // textureMode/textureTiling/textureScale/textureOffset/textureFlip/
   // enabled are already covered above (StrokePath/Entity-level) since
@@ -221,7 +221,7 @@ const ENGINE_MEMBERS = [
   // capsuleHalfHeight/capsuleRadius/opacity are already covered above
   // (Collider/Sprite) since this list is matched regardless of which
   // object precedes the dot.
-  "shapeType", "fillColor", "outlineEnabled", "outlineColor", "outlineWidth",
+  "shapeType", "fillColor", "visualRotation", "outlineEnabled", "outlineColor", "outlineWidth",
   // Light
   "intensity", "radius", "angle", "castsOnWorld", "castShadows", "shadowColor", "shadowStrength", "flicker", "flickerSpeed", "flickerDuration", "coreSize", "coreVisible",
   // Shadow Caster (this.shadowCaster.* — see ShadowCasterAPI.js). enabled/

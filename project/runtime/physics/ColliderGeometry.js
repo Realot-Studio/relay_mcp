@@ -35,8 +35,14 @@ import { ColliderShape } from "../components/Collider2D.js";
  *   ColliderGizmo uses it to rotate the box case only).
  */
 export function getColliderWorldGeometry(collider, transform) {
-  const rotationDeg = transform.rotation || 0;
-  const angleRad = (rotationDeg * Math.PI) / 180;
+  // Entity rotation moves the collider's offset around the body; the
+  // collider's own `rotation` only spins the shape about its own centre.
+  // The returned rotationDeg is the TOTAL world angle of the shape.
+  const entityRotationDeg = transform.rotation || 0;
+  const colliderRotationDeg = Number(collider.rotation) || 0;
+  const rotationDeg = entityRotationDeg + colliderRotationDeg;
+  const angleRad = (entityRotationDeg * Math.PI) / 180;
+  const shapeAngleRad = (rotationDeg * Math.PI) / 180;
 
   // Rotate the LOCAL offset (already scaled to world size) by the
   // entity's rotation, then translate by the entity's world position —
@@ -76,8 +82,8 @@ export function getColliderWorldGeometry(collider, transform) {
     // ROTATED, translated worldPoints for ColliderGizmo, which draws
     // directly in world space and has no separate rotation step of its
     // own to rely on.
-    const cos = Math.cos(angleRad);
-    const sin = Math.sin(angleRad);
+    const cos = Math.cos(shapeAngleRad);
+    const sin = Math.sin(shapeAngleRad);
     const localPoints = collider.trianglePoints.map((p) => ({
       x: p.x * transform.scaleX,
       y: p.y * transform.scaleY,

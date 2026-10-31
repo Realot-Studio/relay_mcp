@@ -30,7 +30,7 @@ function _requireSprite(entity) {
   return s;
 }
 
-const SPRITE_MEMBERS = new Set(["texture", "color", "flipX", "flipY", "opacity"]);
+const SPRITE_MEMBERS = new Set(["texture", "color", "flipX", "flipY", "opacity", "visualRotation"]);
 
 /**
  * Builds the `this.sprite` object for a given entity.
@@ -52,6 +52,13 @@ export function createSpriteAPI(entity) {
     set flipX(v) { _requireSprite(entity).flipX = !!v; },
     get flipY() { return _requireSprite(entity).flipY; },
     set flipY(v) { _requireSprite(entity).flipY = !!v; },
+    /** Degrees. Rotates ONLY the drawn sprite (on top of the entity's
+     *  rotation); the collider and physics body do not turn. */
+    get visualRotation() { return _requireSprite(entity).visualRotation || 0; },
+    set visualRotation(v) {
+      const n = Number(v);
+      _requireSprite(entity).visualRotation = (Number.isFinite(n) ? n : 0);
+    },
     /** 0.0–1.0 transparency. RenderSystem copies this onto the live
      *  PIXI sprite's `.alpha` each frame, so changing it at runtime fades
      *  the sprite in/out immediately (no re-deserialize needed). */

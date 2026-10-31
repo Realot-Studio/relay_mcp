@@ -168,6 +168,7 @@ const SPRITE_API = [
   { label: "color", detail: 'Tint color as hex string, e.g. "#ff0000" for red', insert: 'color = "#', kind: "Property" },
   { label: "flipX", detail: "Flip sprite horizontally (boolean)", insert: "flipX = ", kind: "Property" },
   { label: "flipY", detail: "Flip sprite vertically (boolean)", insert: "flipY = ", kind: "Property" },
+  { label: "visualRotation", detail: "Degrees: rotates ONLY the drawn sprite, not the collider", insert: "visualRotation = ", kind: "Property" },
   { label: "opacity", detail: "Transparency: 0.0 (invisible) to 1.0 (fully visible)", insert: "opacity = ", kind: "Property" },
 ];
 
@@ -177,6 +178,7 @@ const SHAPE_API_COMMON = [
   { label: "fillColor", detail: 'Fill color as hex string, e.g. "#3a8ede"', insert: 'fillColor = "#', kind: "Property" },
   { label: "opacity", detail: "Transparency: 0.0 (invisible) to 1.0 (fully visible)", insert: "opacity = ", kind: "Property" },
   { label: "outlineEnabled", detail: "Whether the outline stroke is drawn around the shape (boolean)", insert: "outlineEnabled = ", kind: "Property" },
+  { label: "visualRotation", detail: "Degrees: rotates ONLY the drawn shape, not the collider", insert: "visualRotation = ", kind: "Property" },
   { label: "outlineColor", detail: 'Outline stroke color as hex string, e.g. "#ffffff"', insert: 'outlineColor = "#', kind: "Property" },
   { label: "outlineWidth", detail: "Outline stroke width in px", insert: "outlineWidth = ", kind: "Property" },
 ];
@@ -549,8 +551,10 @@ const COLLIDER_API = [
   { label: "capsuleHalfHeight", detail: "Capsule half-height (read-only)", insert: "capsuleHalfHeight", kind: "Property" },
   { label: "capsuleRadius", detail: "Capsule radius (read-only)", insert: "capsuleRadius", kind: "Property" },
   { label: "offset", detail: "{ x, y } local collider offset (read-only)", insert: "offset", kind: "Property" },
+  { label: "rotation", detail: "Degrees: rotates ONLY the collider, not the sprite. Read/write", insert: "rotation = ", kind: "Property" },
   { label: "isTrigger", detail: "True when this Collider 2D is a sensor; use onTriggerEnter/Exit. Read/write — the only collider setting a script can change; flips the collider between solid and trigger at the next physics step.", insert: "isTrigger", kind: "Property" },
-  { label: "isOneWayPlatform", detail: "Read-only: true if solid only from above — a body approaching from below/the side passes through, like a jump-through platform", insert: "isOneWayPlatform", kind: "Property" },
+  { label: "isOneWayPlatform", detail: "Read-only: true if one-way (see oneWayDirection) — a body approaching from below/the side passes through, like a jump-through platform", insert: "isOneWayPlatform", kind: "Property" },
+  { label: "oneWayDirection", detail: '"Up" (solid from above) or "Down" (solid from below). Read/write', insert: "oneWayDirection = ", kind: "Property" },
   { label: "friction", detail: "Surface friction (read-only)", insert: "friction", kind: "Property" },
   { label: "restitution", detail: "Bounciness (read-only)", insert: "restitution", kind: "Property" },
   { label: "density", detail: "Collider density (read-only)", insert: "density", kind: "Property" },

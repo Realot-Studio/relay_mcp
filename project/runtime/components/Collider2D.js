@@ -50,6 +50,14 @@ export const ColliderShape = Object.freeze({
   TRIANGLE: "Triangle",
 });
 
+// Which face of a one-way platform is solid. "Up" = classic jump-through
+// platform (stand on top, pass through from below). "Down" = the mirror
+// image (solid only when hit from below, pass through from above).
+export const OneWayDirection = Object.freeze({
+  UP: "Up",
+  DOWN: "Down",
+});
+
 export class Collider2D {
   constructor({
     shape = ColliderShape.BOX,
@@ -74,6 +82,12 @@ export class Collider2D {
     ],
     offsetX = 0,
     offsetY = 0,
+    // Collider-only rotation, in degrees, applied on top of the entity's
+    // own Transform.rotation. The collider turns around ITS OWN centre
+    // (the offset point), so the sprite / shape renderer does not move.
+    // Pair it with SpriteRenderer/ShapeRenderer.visualRotation to rotate
+    // only what is drawn instead.
+    rotation = 0,
     isTrigger = false,
     // One-way platform: solid only when the other body is landing on it
     // from above; a body approaching from below or the side passes
@@ -86,6 +100,7 @@ export class Collider2D {
     // contact resolution entirely) or on shapes other than Box (one-way
     // platforms are conventionally flat, thin, rectangular surfaces).
     isOneWayPlatform = false,
+    oneWayDirection = OneWayDirection.UP,
     friction = 0.5,
     restitution = 0,
     density = 1,
@@ -112,8 +127,10 @@ export class Collider2D {
     // Shared
     this.offsetX = offsetX;
     this.offsetY = offsetY;
+    this.rotation = Number.isFinite(Number(rotation)) ? Number(rotation) : 0;
     this.isTrigger = isTrigger;
     this.isOneWayPlatform = isOneWayPlatform;
+    this.oneWayDirection = oneWayDirection === OneWayDirection.DOWN ? OneWayDirection.DOWN : OneWayDirection.UP;
     this.friction = friction;
     this.restitution = restitution;
     this.density = density;

@@ -24,6 +24,9 @@ export class SpriteRenderer {
     opacity = 1,
     flipX = false,
     flipY = false,
+    // Visual-only rotation in degrees, added to Transform.rotation when
+    // drawing. The collider and physics body are NOT affected.
+    visualRotation = 0,
     referenceWidth = null,
     referenceHeight = null,
   } = {}) {
@@ -32,6 +35,7 @@ export class SpriteRenderer {
     this.opacity = opacity;
     this.flipX = flipX;
     this.flipY = flipY;
+    this.visualRotation = Number.isFinite(Number(visualRotation)) ? Number(visualRotation) : 0;
 
     // The PIXEL size RenderSystem treats Transform.scaleX/Y=1 as meaning
     // "this many pixels on screen" — captured once (usually from

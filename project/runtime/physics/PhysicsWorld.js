@@ -2432,15 +2432,20 @@ export class PhysicsWorld {
         const offsetX = (Number(collider?.offsetX) || 0) * scaleX;
         const offsetY = (Number(collider?.offsetY) || 0) * scaleY;
         const centerY = (Number(transform?.y) || 0) + offsetX * s + offsetY * c;
+        // Shape extents follow the TOTAL angle (entity + collider-only
+        // rotation); the offset above still follows the entity angle.
+        const shapeAngle = (rotationDeg + (Number(collider?.rotation) || 0)) * DEG2RAD;
+        const sc = Math.cos(shapeAngle);
+        const ss = Math.sin(shapeAngle);
 
         let verticalExtent = Number(cached.halfHeight) || 0;
         if (cached.shape === ColliderShape.BOX) {
           verticalExtent =
-            Math.abs(c) * (Number(cached.halfHeight) || 0) +
-            Math.abs(s) * (Number(cached.halfWidth) || 0);
+            Math.abs(sc) * (Number(cached.halfHeight) || 0) +
+            Math.abs(ss) * (Number(cached.halfWidth) || 0);
         } else if (cached.shape === ColliderShape.CAPSULE) {
           verticalExtent =
-            Math.abs(c) * (Number(cached.halfHeight) || 0) +
+            Math.abs(sc) * (Number(cached.halfHeight) || 0) +
             (Number(cached.radius) || 0);
         } else if (cached.shape === ColliderShape.CIRCLE) {
           verticalExtent = Number(cached.radius) || 0;
@@ -2450,7 +2455,7 @@ export class PhysicsWorld {
           for (const point of points) {
             const px = (Number(point?.x) || 0) * scaleX;
             const py = (Number(point?.y) || 0) * scaleY;
-            const pointY = px * s + py * c;
+            const pointY = px * ss + py * sc;
             if (pointY > maxY) maxY = pointY;
           }
           verticalExtent = Math.max(0, maxY);
@@ -2464,6 +2469,9 @@ export class PhysicsWorld {
         cached.previousBottomY = Number.isFinite(cached.bottomY)
           ? cached.bottomY
           : currentBottomY;
+        cached.previousTopY = Number.isFinite(cached.topY)
+          ? cached.topY
+          : currentTopY;
         cached.centerY = centerY;
         cached.bottomY = currentBottomY;
         cached.topY = currentTopY;
@@ -2862,8 +2870,14 @@ export class PhysicsWorld {
       // its top surface, overlap recovery must not push it back down and
       // re-create the very blockage the sweep is supposed to avoid.
       if (this._oneWayPlatformHandles.has(other.handle)) {
-        const platformBounds = this._colliderWorldBoundsCache.get(other.handle);
-        const sourceBounds = this._colliderWorldBoundsCache.get(source.handle);
+        let platformBounds = this._colliderWorldBoundsCache.get(other.handle);
+        let sourceBounds = this._colliderWorldBoundsCache.get(source.handle);
+        let remainingYDir = remaining.y;
+        if (platformBounds && sourceBounds && platformBounds.oneWayDown) {
+          platformBounds = this._mirrorBoundsY(platformBounds);
+          sourceBounds = this._mirrorBoundsY(sourceBounds);
+          remainingYDir = -remaining.y;
+        }
         if (platformBounds && sourceBounds) {
           const platformTop = Number.isFinite(platformBounds.topY)
             ? platformBounds.topY
@@ -2871,7 +2885,7 @@ export class PhysicsWorld {
           const sourceBottom = Number.isFinite(sourceBounds.bottomY)
             ? sourceBounds.bottomY
             : position.y + sourceBounds.halfHeight;
-          if (remaining.y < -1e-7 || sourceBottom > platformTop + skin) continue;
+          if (remainingYDir < -1e-7 || sourceBottom > platformTop + skin) continue;
         }
       }
 
@@ -2974,8 +2988,14 @@ export class PhysicsWorld {
         // remain pass-through until it has cleared the platform and starts
         // falling.
         if (this._oneWayPlatformHandles.has(other.handle)) {
-          const platformBounds = this._colliderWorldBoundsCache.get(other.handle);
-          const sourceBounds = this._colliderWorldBoundsCache.get(source.handle);
+          let platformBounds = this._colliderWorldBoundsCache.get(other.handle);
+          let sourceBounds = this._colliderWorldBoundsCache.get(source.handle);
+          let remainingYDir = remaining.y;
+          if (platformBounds && sourceBounds && platformBounds.oneWayDown) {
+            platformBounds = this._mirrorBoundsY(platformBounds);
+            sourceBounds = this._mirrorBoundsY(sourceBounds);
+            remainingYDir = -remaining.y;
+          }
 
           if (platformBounds && sourceBounds) {
             const platformTop = Number.isFinite(platformBounds.topY)
@@ -2986,8 +3006,8 @@ export class PhysicsWorld {
               : position.y + sourceBounds.halfHeight;
 
             if (
-              remaining.y < -1e-7 ||       // moving upward
-              remaining.y <= 1e-7 ||       // horizontal / stationary
+              remainingYDir < -1e-7 ||     // moving upward
+              remainingYDir <= 1e-7 ||     // horizontal / stationary
               sourceBottom > platformTop + skin // already below the top
             ) {
               return;
@@ -3675,6 +3695,29 @@ export class PhysicsWorld {
    * mark isOneWayPlatform on (matches Collider2D.js's own doc comment
    * that one-way platforms are conventionally flat Box shapes anyway).
    */
+  /**
+   * Returns a vertically mirrored copy of a cached bounds entry (y -> -y).
+   * "Down" one-way platforms reuse the exact same "Up" logic on mirrored
+   * bounds, so the proven landing/support rules are not duplicated.
+   */
+  _mirrorBoundsY(b) {
+    const hh = Number(b.halfHeight) || 0;
+    const prevTop = Number.isFinite(b.previousTopY)
+      ? b.previousTopY
+      : (Number.isFinite(b.previousCenterY) ? b.previousCenterY : b.centerY) - hh;
+    const top = Number.isFinite(b.topY) ? b.topY : b.centerY - hh;
+    const bottom = Number.isFinite(b.bottomY) ? b.bottomY : b.centerY + hh;
+    return {
+      ...b,
+      centerY: -b.centerY,
+      previousCenterY: -(Number.isFinite(b.previousCenterY) ? b.previousCenterY : b.centerY),
+      topY: -bottom,
+      bottomY: -top,
+      previousBottomY: -prevTop,
+      vy: -(Number(b.vy) || 0),
+    };
+  }
+
   _filterContactPair(collider1, collider2, body1, body2) {
     const RAPIER = this.RAPIER;
     const entity1 = this._colliderHandleMap.get(collider1);
@@ -3698,12 +3741,18 @@ export class PhysicsWorld {
 
     const platformHandle = platformIsFirst ? collider1 : collider2;
     const otherHandle = platformIsFirst ? collider2 : collider1;
-    const platformBounds = this._colliderWorldBoundsCache.get(platformHandle);
-    const otherBounds = this._colliderWorldBoundsCache.get(otherHandle);
+    let platformBounds = this._colliderWorldBoundsCache.get(platformHandle);
+    let otherBounds = this._colliderWorldBoundsCache.get(otherHandle);
     // Cache miss (e.g. a collider created this exact frame, not yet
     // synced) — fail safe to solid rather than letting something fall
     // through a platform due to a bookkeeping gap.
     if (!platformBounds || !otherBounds) return RAPIER.SolverFlags.COMPUTE_IMPULSE;
+    // "Down" one-way platform: mirror everything vertically and run the
+    // unchanged "Up" rules below.
+    if (platformBounds.oneWayDown) {
+      platformBounds = this._mirrorBoundsY(platformBounds);
+      otherBounds = this._mirrorBoundsY(otherBounds);
+    }
 
     const platformTop = Number.isFinite(platformBounds.topY)
       ? platformBounds.topY
@@ -3848,6 +3897,7 @@ export class PhysicsWorld {
       handle._sigShape === collider.shape &&
       handle._sigOffsetX === collider.offsetX &&
       handle._sigOffsetY === collider.offsetY &&
+      handle._sigRotation === collider.rotation &&
       handle._sigWidth === collider.width &&
       handle._sigHeight === collider.height &&
       handle._sigRadius === collider.radius &&
@@ -3856,6 +3906,7 @@ export class PhysicsWorld {
       handle._sigTrianglePoints === collider.trianglePoints &&
       handle._sigIsTrigger === collider.isTrigger &&
       handle._sigIsOneWayPlatform === collider.isOneWayPlatform &&
+      handle._sigOneWayDirection === collider.oneWayDirection &&
       handle._sigHasMovementType === entityHasMovementType &&
       handle._sigFriction === collider.friction &&
       handle._sigRestitution === collider.restitution &&
@@ -3927,6 +3978,9 @@ export class PhysicsWorld {
 
     desc
       .setTranslation(collider.offsetX * transform.scaleX, collider.offsetY * transform.scaleY)
+      // Collider-only rotation (Collider2D.rotation, degrees): local to
+      // the body, so it composes with the body's own rotation.
+      .setRotation((Number(collider.rotation) || 0) * DEG2RAD)
       .setSensor(!!collider.isTrigger)
       // One-way platforms opt into this hook; connected-pair exclusion
       // can also enable it on all scene colliders while a joint requests it.
@@ -3984,6 +4038,7 @@ export class PhysicsWorld {
     handle._sigShape = collider.shape;
     handle._sigOffsetX = collider.offsetX;
     handle._sigOffsetY = collider.offsetY;
+    handle._sigRotation = collider.rotation;
     handle._sigWidth = collider.width;
     handle._sigHeight = collider.height;
     handle._sigRadius = collider.radius;
@@ -3992,6 +4047,7 @@ export class PhysicsWorld {
     handle._sigTrianglePoints = collider.trianglePoints;
     handle._sigIsTrigger = collider.isTrigger;
     handle._sigIsOneWayPlatform = collider.isOneWayPlatform;
+    handle._sigOneWayDirection = collider.oneWayDirection;
     handle._sigHasMovementType = entityHasMovementType;
     handle._sigFriction = collider.friction;
     handle._sigRestitution = collider.restitution;
@@ -4032,6 +4088,8 @@ export class PhysicsWorld {
       bottomY: cacheBottomY,
       previousBottomY: cacheBottomY,
       topY: cacheTopY,
+      previousTopY: cacheTopY,
+      oneWayDown: collider.oneWayDirection === "Down",
       halfWidth: cacheHalfWidth,
       halfHeight: cacheHalfHeight,
       radius: geo.radius != null ? geo.radius : 0,

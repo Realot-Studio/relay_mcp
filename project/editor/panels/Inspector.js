@@ -245,6 +245,11 @@ export function renderInspector() {
           numInput("", spriteRenderer.opacity != null ? spriteRenderer.opacity : 1, "SpriteRenderer.opacity")
         ) +
         row(
+          "Visual Rotation",
+          numInput("", spriteRenderer.visualRotation || 0, "SpriteRenderer.visualRotation")
+        ) +
+        '<div class="static-body-note" style="padding:2px 4px 6px;color:#8a93a0;font-size:11px;">Rotates only the drawn sprite (degrees). The collider stays put.</div>' +
+        row(
           "Flip",
           '<div class="flip-row"><label><input type="checkbox" data-field="SpriteRenderer.flipX"' +
             (spriteRenderer.flipX ? " checked" : "") +
@@ -299,6 +304,10 @@ export function renderInspector() {
         row(
           "Opacity",
           numInput("", shapeRenderer.opacity != null ? shapeRenderer.opacity : 1, "ShapeRenderer.opacity")
+        ) +
+        row(
+          "Visual Rotation",
+          numInput("", shapeRenderer.visualRotation || 0, "ShapeRenderer.visualRotation")
         ) +
         row(
           "Outline",
@@ -1527,6 +1536,8 @@ export function renderInspector() {
             numInput("Y", collider.offsetY, "Collider2D.offsetY") +
             "</div>"
         ) +
+        row("Collider Rotation", numInput("", collider.rotation || 0, "Collider2D.rotation")) +
+        '<div class="static-body-note" style="padding:2px 4px 6px;color:#8a93a0;font-size:11px;">Rotates only the collider (degrees) around its own center. The sprite/shape stays put.</div>' +
         row(
           "Is Trigger",
           '<input type="checkbox" data-field="Collider2D.isTrigger" style="accent-color:#2C5D87;margin:0;"' +
@@ -1540,8 +1551,13 @@ export function renderInspector() {
                 (collider.isOneWayPlatform ? " checked" : "") +
                 "/>"
             ) +
+            (collider.isOneWayPlatform
+              ? row("One-Way Direction", dropdownInput(["Up", "Down"], collider.oneWayDirection === "Down" ? "Down" : "Up", "Collider2D.oneWayDirection"))
+              : "") +
             '<div class="static-body-note" style="padding:6px 4px;color:#8a93a0;font-size:11px;">' +
-            "Solid only when something lands on top from above — a body jumping up from below or approaching from the side passes straight through, like a Mario-style jump-through platform." +
+            (collider.isOneWayPlatform && collider.oneWayDirection === "Down"
+              ? "Down: solid only when something hits it from below (a ceiling you can't jump up through) — a body falling from above or approaching from the side passes straight through."
+              : "Up: solid only when something lands on top from above — a body jumping up from below or approaching from the side passes straight through, like a Mario-style jump-through platform.") +
             "</div>"
           : "") +
         row("Friction", numInput("", collider.friction, "Collider2D.friction")) +

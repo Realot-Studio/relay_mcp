@@ -36,7 +36,7 @@ function _requireShape(entity) {
 
 const SHAPE_MEMBERS = new Set([
   "shapeType", "width", "height", "radius", "capsuleHalfHeight", "capsuleRadius",
-  "fillColor", "opacity", "outlineEnabled", "outlineColor", "outlineWidth",
+  "fillColor", "visualRotation", "opacity", "outlineEnabled", "outlineColor", "outlineWidth",
 ]);
 
 /**
@@ -72,6 +72,13 @@ export function createShapeAPI(entity) {
     /** Fill color as hex string, e.g. "#3a8ede". */
     get fillColor() { return _requireShape(entity).fillColor; },
     set fillColor(v) { _requireShape(entity).fillColor = v; },
+    /** Degrees. Rotates ONLY the drawn shape (on top of the entity's
+     *  rotation); the collider and physics body do not turn. */
+    get visualRotation() { return _requireShape(entity).visualRotation || 0; },
+    set visualRotation(v) {
+      const n = Number(v);
+      _requireShape(entity).visualRotation = (Number.isFinite(n) ? n : 0);
+    },
     /** 0.0-1.0 transparency. */
     get opacity() { return _requireShape(entity).opacity; },
     set opacity(v) {
