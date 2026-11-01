@@ -1,8 +1,8 @@
 /**
  * NewProjectModal.js
- * Modal dialog for creating a new project: project title and a starter
- * template. Mounted once at #modal-root and toggled via the .open class
- * so its internal input state survives re-renders of other views.
+ * New project dialog: template gallery on the left, details + project name
+ * + Create on the right. Mounted once at #modal-root and toggled with the
+ * .open class so the typed name survives re-renders of other views.
  */
 window.RealotNewProjectModal = {
     nameValue: '',
@@ -10,53 +10,64 @@ window.RealotNewProjectModal = {
     render() {
         const { el } = window.RealotDom;
         const state = window.RealotStore.getState();
+        const tpl = window.RealotTemplateGrid.find(state.selectedTemplateId) || window.RealotTemplates[0];
+
+        const create = () => {
+            const project = window.RealotStore.createProject({ name: this.nameValue.trim() });
+            this.nameValue = '';
+            window.RealotNav.openEditor(project);
+        };
 
         const nameInput = el('input', {
             type: 'text',
             class: 'field-input',
-            placeholder: 'e.g. Untitled Masterpiece',
+            placeholder: tpl.name,
             value: this.nameValue,
-            oninput: (e) => { this.nameValue = e.target.value; }
+            oninput: (e) => { this.nameValue = e.target.value; },
+            onKeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); create(); } }
         });
 
-        const body = el('div', { class: 'modal-body' }, [
-            el('div', { class: 'field-group' }, [
-                el('label', { class: 'field-label' }, ['Project title']),
-                nameInput
-            ]),
-            el('div', {}, [
-                el('label', { class: 'field-label' }, ['Starting architecture']),
-                window.RealotTemplateGrid.render()
-            ])
+        const preview = el('div', { class: 'side-preview' + (tpl.thumbnail ? '' : ' plain') }, [
+            tpl.thumbnail
+                ? el('img', { src: tpl.thumbnail, alt: tpl.name + ' preview' })
+                : el('span', { html: `<svg data-lucide="${tpl.icon}"></svg>` })
         ]);
 
-        const footer = el('div', { class: 'modal-footer' }, [
-            el('span', { style: 'font-size:12px;color:var(--text-500);' }, [`Realot Engine v${window.RealotVersion || '1.0.0'} (Stable)`]),
-            el('div', { style: 'display:flex;gap:10px;' }, [
+        const side = el('div', { class: 'modal-side' }, [
+            el('div', { class: 'side-body' }, [
+                preview,
+                el('div', {}, [
+                    el('div', { class: 'side-name' }, [tpl.name]),
+                    el('div', { class: 'side-desc' }, [tpl.description])
+                ]),
+                el('div', {}, [
+                    el('label', { class: 'field-label' }, ['Project name']),
+                    nameInput
+                ])
+            ]),
+            el('div', { class: 'side-footer' }, [
                 el('button', { class: 'btn btn-ghost', onClick: () => window.RealotStore.closeModal() }, ['Cancel']),
-                el('button', {
-                    class: 'btn btn-primary',
-                    onClick: () => {
-                        const project = window.RealotStore.createProject({ name: this.nameValue.trim() });
-                        this.nameValue = '';
-                        window.RealotNav.openEditor(project);
-                    }
-                }, [
-                    'Initialize workspace',
+                el('button', { class: 'btn btn-primary', onClick: create }, [
+                    'Create project',
                     el('span', { html: '<svg data-lucide="arrow-right"></svg>' })
                 ])
             ])
         ]);
 
-        const panel = el('div', { class: 'modal-panel' }, [
+        const panel = el('div', { class: 'modal-panel', role: 'dialog', 'aria-label': 'New project' }, [
             el('div', { class: 'modal-header' }, [
                 el('div', { class: 'modal-title' }, ['New project']),
                 el('button', { class: 'btn btn-icon', title: 'Close', 'aria-label': 'Close', onClick: () => window.RealotStore.closeModal() }, [
                     el('span', { html: '<svg data-lucide="x"></svg>' })
                 ])
             ]),
-            body,
-            footer
+            el('div', { class: 'modal-split' }, [
+                el('div', { class: 'modal-gallery' }, [
+                    el('div', { class: 'field-label', style: 'margin-bottom:10px;' }, ['Choose a template']),
+                    window.RealotTemplateGrid.render()
+                ]),
+                side
+            ])
         ]);
 
         const overlay = el('div', {

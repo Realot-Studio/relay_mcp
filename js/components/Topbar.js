@@ -5,9 +5,8 @@
  */
 window.RealotTopbar = {
     titles: {
-        projects: { title: 'Projects', sub: 'Recently opened workspaces' },
-        learn: { title: 'Learn', sub: 'Guides, references and rendering techniques' },
-        installs: { title: 'Installs', sub: 'Engine versions on this machine' }
+        projects: { title: 'Projects', sub: 'Start from a template or open a recent project' },
+        learn: { title: 'Learn', sub: 'Guides, references and rendering techniques' }
     },
 
     render() {
@@ -23,7 +22,7 @@ window.RealotTopbar = {
         const right = el('div', { style: 'display:flex;align-items:center;gap:12px;' });
 
         // Always visible regardless of which view is active (Projects/
-        // Learn/Installs) — this engine is free, so the ask should be
+        // Learn) — this engine is free, so the ask should be
         // where people already are, not buried in a settings screen
         // they may never open. Real <a> tag (not a JS-driven
         // window.open on a button) for correct external-link semantics

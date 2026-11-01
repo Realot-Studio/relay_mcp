@@ -22,8 +22,25 @@
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (e) { /* ignore */ }
     }
 
+    const PREFS_KEY = 'realot.hub.prefs';
+    function loadPrefs() {
+        try {
+            const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+            return {
+                viewMode: p.viewMode === 'list' ? 'list' : 'grid',
+                sortBy: p.sortBy === 'name' ? 'name' : 'recent'
+            };
+        } catch (e) { return { viewMode: 'grid', sortBy: 'recent' }; }
+    }
+    const prefs = loadPrefs();
+    function savePrefs() {
+        try { localStorage.setItem(PREFS_KEY, JSON.stringify({ viewMode: state.viewMode, sortBy: state.sortBy })); } catch (e) { /* ignore */ }
+    }
+
     const state = {
-        view: 'projects',            // 'projects' | 'learn' | 'installs'
+        viewMode: prefs.viewMode,    // 'grid' | 'list' (remembered)
+        sortBy: prefs.sortBy,        // 'recent' | 'name' (remembered)
+        view: 'projects',            // 'projects' | 'learn'
         projects: loadProjects(),
         searchQuery: '',
         modalOpen: false,
@@ -40,7 +57,13 @@
         subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
         setView(view) { state.view = view; notify(); },
         setSearchQuery(q) { state.searchQuery = q; notify(); },
-        openModal() { state.modalOpen = true; notify(); },
+        setViewMode(m) { state.viewMode = m === 'list' ? 'list' : 'grid'; savePrefs(); notify(); },
+        setSortBy(s) { state.sortBy = s === 'name' ? 'name' : 'recent'; savePrefs(); notify(); },
+        openModal(templateId) {
+            if (templateId && window.RealotTemplates.some(t => t.id === templateId)) state.selectedTemplateId = templateId;
+            state.modalOpen = true;
+            notify();
+        },
         closeModal() { state.modalOpen = false; notify(); },
         selectTemplate(id) { state.selectedTemplateId = id; notify(); },
         getProject(id) { return state.projects.find(p => p.id === id) || null; },

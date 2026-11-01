@@ -7,30 +7,21 @@ window.RealotLearnView = {
     render() {
         const { el } = window.RealotDom;
 
-        const link = (href, label, desc) =>
-            el('a', {
-                class: 'btn btn-ghost',
-                href,
-                target: '_blank',
-                rel: 'noopener',
-                style: 'display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-decoration:none;min-width:220px;'
-            }, [
-                el('span', {}, [label]),
-                el('span', { style: 'opacity:.65;font-size:.85em;' }, [desc])
+        const card = (href, icon, label, desc) =>
+            el('a', { class: 'learn-card', href, target: '_blank', rel: 'noopener' }, [
+                el('div', { class: 'learn-icon' }, [el('span', { html: `<svg data-lucide="${icon}"></svg>` })]),
+                el('div', {}, [
+                    el('div', { class: 'learn-title' }, [label]),
+                    el('div', { class: 'learn-desc' }, [desc])
+                ])
             ]);
 
-        return el('div', { class: 'empty-state' }, [
-            el('div', { class: 'empty-rings' }, [
-                el('div', { class: 'ring ring-outer' }),
-                el('div', { class: 'ring ring-inner' }),
-                el('div', { class: 'ring-icon' }, [el('span', { html: '<svg data-lucide="book-open"></svg>' })])
-            ]),
-            el('div', { class: 'empty-title' }, ['Documentation & guides']),
-            el('div', { class: 'empty-desc' }, ['Quick start, core concepts, the scripting API, and exporting your game.']),
-            el('div', { style: 'display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:12px;' }, [
-                link('/docs/index.html', 'Open documentation', 'Quick start and scripting'),
-                link('/docs/index.html#api', 'Script API', 'Lifecycle and globals'),
-                link('/docs/index.html#safety', 'Safety', 'Scripts and shared projects')
+        return el('div', { class: 'section' }, [
+            el('div', { class: 'section-head' }, [el('div', { class: 'section-title' }, ['Documentation'])]),
+            el('div', { class: 'learn-grid' }, [
+                card('/docs/index.html', 'book-open', 'Quick start', 'Make your first scene and press play.'),
+                card('/docs/index.html#api', 'code-2', 'Script API', 'Lifecycle functions, globals and components.'),
+                card('/docs/index.html#safety', 'shield-check', 'Safety', 'Running scripts from shared projects.')
             ])
         ]);
     }

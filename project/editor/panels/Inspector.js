@@ -83,9 +83,16 @@ function inspectVarRows(script) {
           ' placeholder="comma, separated, ' + (d.arrayOf === "string" ? "text" : "numbers") + '" style="width:100%;box-sizing:border-box;" />';
         break;
     }
-    const reset = isSet
-      ? '<button class="animwin-btn" data-action="reset-inspect-var" data-var="' + esc(d.name) + '" title="Reset to the default written in the script" style="margin-left:6px;padding:0 6px;flex:none;">&#8634;</button>'
-      : "";
+    // Reset sits in a fixed-width slot at the far right corner of the row. The slot
+    // is ALWAYS there (just invisible while the value is still the script's default),
+    // so the field never changes size or moves when you edit it, and you can keep
+    // typing new values (5 -> 10) without ever touching reset.
+    const reset =
+      '<button class="animwin-btn" data-action="reset-inspect-var" data-var="' + esc(d.name) + '"' +
+      ' title="Reset to the default written in the script"' +
+      (isSet ? "" : ' tabindex="-1" disabled') +
+      ' style="flex:none;width:14px;height:14px;min-width:0;min-height:0;margin-left:4px;padding:0;font-size:10px;line-height:1;display:inline-flex;align-items:center;justify-content:center;' +
+      (isSet ? "" : "visibility:hidden;") + '">&#8634;</button>';
     html += row(
       '<span title="' + esc((d.tooltip ? d.tooltip + " — " : "") + d.kind + " " + d.name + " (" + d.type + ")") + '">' + esc(d.label) + "</span>",
       '<div style="display:flex;align-items:center;gap:0;width:100%;"><div style="flex:1;min-width:0;">' + control + "</div>" + reset + "</div>"

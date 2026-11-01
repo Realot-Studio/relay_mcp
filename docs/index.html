@@ -168,7 +168,7 @@ function onMessage(message, sender, data) {
 }</code></pre>
 
 <h3 id="timescale">Slow motion and speed-up</h3>
-<p><code>time.scale</code> changes how fast the whole game runs, like Unity's <code>Time.timeScale</code>.</p>
+<p><code>time.scale</code> changes how fast the whole game runs (0.5 is slow motion, 2 is double speed).</p>
 <pre><code>function onClick() {
   time.scale = 0.3;              // slow motion
   wait(1.5, function () {        // 1.5 GAME seconds = 5 real seconds at 0.3

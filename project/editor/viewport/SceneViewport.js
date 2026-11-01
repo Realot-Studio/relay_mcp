@@ -55,6 +55,7 @@ import { drawNavWorldGizmo } from "./NavWorldGizmo.js";
 import { beginEdit, commitEdit, snapshotNow, resetHistory } from "../state/UndoManager.js";
 import { loadProjectSnapshot, applySnapshot, getProjectIdentityFromUrl } from "../state/ProjectStorage.js";
 import { getSafeRendererResolution } from "../../runtime/core/MobileViewport.js";
+import { getCameraWorldRect } from "../../runtime/core/CameraUtils.js";
 
 // Click/box-select hit-box half-size (world units) for an "empty"
 // entity — Transform only, no Sprite/Shape Renderer, so there's no
@@ -1893,4 +1894,70 @@ export function mountOrUpdateSceneViewport(render) {
 
 export function getZoomPercent() {
   return viewportCamera ? viewportCamera.zoomPercent : 100;
+}
+
+/**
+ * Captures what the game's Main Camera sees (no grid, gizmos or camera
+ * frame) as a small image data URL, for the Hub's project cards.
+ * Briefly re-frames the stage on the camera rect, renders once, copies
+ * the pixels out, then restores the editor view. Returns null when it
+ * can't (no renderer, playing, nothing to frame) so callers just skip.
+ * @param {number} [maxWidth=480]
+ * @returns {string|null}
+ */
+export function captureProjectThumbnail(maxWidth = 480) {
+  if (!pixiApp || !pixiApp.renderer || !pixiApp.stage || !pixiApp.view) return null;
+  if (_rendererContextLost || editorState.isPlaying || !editorState.world) return null;
+
+  let rect = null;
+  let fallback = null;
+  for (const entity of editorState.world.query(TRANSFORM, CAMERA)) {
+    const cam = entity.getComponent(CAMERA);
+    const r = getCameraWorldRect(cam, entity.getComponent(TRANSFORM));
+    if (cam.isMain) { rect = r; break; }
+    if (!fallback) fallback = r;
+  }
+  rect = rect || fallback;
+  const renderer = pixiApp.renderer;
+  const stage = pixiApp.stage;
+  const sw = renderer.screen.width;
+  const sh = renderer.screen.height;
+  if (!rect || !(rect.width > 0) || !(rect.height > 0) || !(sw > 0) || !(sh > 0)) return null;
+
+  const chrome = [gridContainer, cameraGizmoContainer, navWorldGizmoContainer, colliderGizmoContainer,
+    lightGizmoContainer, audioGizmoContainer, audioListenerGizmoContainer, gizmoContainer];
+  const wasVisible = chrome.map((c) => (c ? c.visible : true));
+  const saved = { x: stage.x, y: stage.y, sx: stage.scale.x, sy: stage.scale.y };
+  let url = null;
+  try {
+    chrome.forEach((c) => { if (c) c.visible = false; });
+    const fit = Math.min(sw / rect.width, sh / rect.height);
+    stage.scale.set(fit);
+    stage.x = sw / 2 - (rect.left + rect.width / 2) * fit;
+    stage.y = sh / 2 - (rect.top + rect.height / 2) * fit;
+    if (lightingSystem) lightingSystem.update(editorState.world, 0);
+    renderer.render(stage);
+
+    const res = renderer.resolution || 1;
+    const cw = rect.width * fit * res;
+    const ch = rect.height * fit * res;
+    const out = document.createElement("canvas");
+    const k = Math.min(1, maxWidth / cw);
+    out.width = Math.max(1, Math.round(cw * k));
+    out.height = Math.max(1, Math.round(ch * k));
+    const ctx = out.getContext("2d");
+    ctx.drawImage(pixiApp.view, (sw * res - cw) / 2, (sh * res - ch) / 2, cw, ch, 0, 0, out.width, out.height);
+    url = out.toDataURL("image/webp", 0.72);
+    if (url.indexOf("data:image/webp") !== 0) url = out.toDataURL("image/jpeg", 0.75);
+  } catch (err) {
+    url = null;
+  } finally {
+    chrome.forEach((c, i) => { if (c) c.visible = wasVisible[i]; });
+    stage.scale.set(saved.sx, saved.sy);
+    stage.x = saved.x;
+    stage.y = saved.y;
+    try { if (lightingSystem) lightingSystem.update(editorState.world, 0); } catch (e) { /* ignore */ }
+    if (_markViewportDirty) _markViewportDirty();
+  }
+  return url;
 }

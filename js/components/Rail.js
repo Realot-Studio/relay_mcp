@@ -1,6 +1,6 @@
 /**
  * Rail.js
- * Unity-Hub-style narrow icon rail for top-level section navigation.
+ * Narrow icon rail for top-level section navigation.
  */
 window.RealotRail = {
     render() {
@@ -18,16 +18,8 @@ window.RealotRail = {
             }, [el('span', { html: `<svg data-lucide="${item.icon}"></svg>` })]);
         });
 
-        const account = el('button', {
-            class: 'rail-item rail-account',
-            title: 'Guest Developer — sign in to sync',
-            'aria-label': 'Account'
-        }, [el('span', { html: '<svg data-lucide="user"></svg>' })]);
-
         return el('div', { style: 'display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;' }, [
-            ...items,
-            el('div', { class: 'rail-spacer' }),
-            account
+            ...items
         ]);
     }
 };

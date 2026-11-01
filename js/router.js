@@ -11,8 +11,6 @@ window.RealotRouter = {
                 return window.RealotProjectList.render();
             case 'learn':
                 return window.RealotLearnView.render();
-            case 'installs':
-                return window.RealotInstallsView.render();
             default:
                 return window.RealotProjectList.render();
         }

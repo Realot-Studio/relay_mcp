@@ -6,7 +6,7 @@
  * not ES modules, so it can't `import` project/runtime/EngineVersion.js
  * directly the way the editor does (see that file's own doc comment) —
  * this is the launcher's own copy of the same constant, kept in one
- * place here so InstallsView.js and store.js both read it instead of
+ * place here so the Hub (store.js) reads it instead of
  * each hardcoding (and inevitably drifting out of sync with) their own
  * version string.
  *

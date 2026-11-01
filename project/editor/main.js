@@ -45,7 +45,7 @@ import { renderStatusBar, startLiveStats } from "./panels/StatusBar.js";
 // Keep every import of this file across the whole editor byte-for-
 // byte identical (no query string on any of them) so they always
 // resolve to the SAME module instance.
-import { mountOrUpdateSceneViewport, getGame, detachViewportCanvas, isInitialProjectLoadDone } from "./viewport/SceneViewport.js";
+import { mountOrUpdateSceneViewport, getGame, detachViewportCanvas, isInitialProjectLoadDone, captureProjectThumbnail } from "./viewport/SceneViewport.js";
 import { openPlayWindow, closePlayWindow, isPlayWindowOpen, getPlayWindow, isTrustedPlayMessage, sendPlayPayload } from "./viewport/PlayWindow.js";
 import { attachEditorEvents, loadProjectFromFile } from "./state/EditorEvents.js";
 import { adoptFileHandle } from "./state/FileSync.js";
@@ -485,6 +485,28 @@ function boot() {
   // an editor opened standalone has nowhere in the launcher's project
   // list to save back to.
   if (identity.isLauncherProject) {
+    // Hub project-card screenshot: what the game camera sees, stored on
+    // the project's Hub record (same-origin localStorage, key shared with
+    // the Hub's store.js). Best-effort; any failure just keeps the old art.
+    let lastShot = 0;
+    const saveHubThumbnail = (force) => {
+      const now = Date.now();
+      if (!force && now - lastShot < 15000) return;
+      if (!isInitialProjectLoadDone()) return;
+      try {
+        const art = captureProjectThumbnail();
+        if (!art) return;
+        lastShot = now;
+        const list = JSON.parse(localStorage.getItem("realot.projects") || "[]");
+        const rec = Array.isArray(list) && list.find((p) => p && p.id === identity.id);
+        if (!rec) return;
+        rec.art = art;
+        localStorage.setItem("realot.projects", JSON.stringify(list));
+      } catch (e) { /* quota/storage unavailable: keep template art */ }
+    };
+    setTimeout(() => saveHubThumbnail(true), 4000);
+    window.addEventListener("pagehide", () => saveHubThumbnail(true));
+    document.addEventListener("visibilitychange", () => { if (document.hidden) saveHubThumbnail(true); });
     const autosave = startAutosave(
       () => {
         // Never save OVER a project's own snapshot with the blank
@@ -498,6 +520,7 @@ function boot() {
       },
       (result, reason, consecutiveFailures) => {
         setAutosaveStatus(result && result.ok ? "saved" : "error");
+        if (result && result.ok) saveHubThumbnail(reason === "manual");
         // A single failed autosave tick can be a harmless transient
         // blip (a momentary IndexedDB lock, a tab backgrounding mid-
         // write) and isn't worth interrupting the user for — the

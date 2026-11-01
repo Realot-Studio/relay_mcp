@@ -8,14 +8,14 @@ window.RealotTemplates = [
         id: 'blank',
         name: 'Blank Canvas',
         icon: 'monitor',
-        description: 'An empty environment optimized for pure 2D rendering and custom logic.',
+        description: 'An empty scene with just a camera. Start from nothing and build any 2D game you like.',
         default: true
     },
     {
         id: 'platformer',
         name: 'Platformer Kit',
         icon: 'move-diagonal',
-        description: 'Kinematic controller, one-way platforms, and coyote-time jump tuning baked in.',
+        description: 'Side-scrolling platformer: run and jump across tile platforms with a smooth-following camera. Fall off the edge and the level restarts.',
         // Bundled real project data (js/data/templates/platformer-starter.data.js)
         // that new-project seeding applies via applySnapshot() the first
         // time this template's project is opened in the editor — see
@@ -34,7 +34,7 @@ window.RealotTemplates = [
         id: 'topdown',
         name: 'Top-Down',
         icon: 'swords',
-        description: 'Playable top-down starter: player, NPCs, collectible coins, and a lit dungeon scene.',
+        description: 'Top-down dungeon crawler: steer a robot through a dark, torch-lit dungeon, collect every coin, and dodge the red patrol robots. You have 3 lives.',
         // Same real-project-seeding pattern as 'platformer' above — see
         // its comment for the full explanation. Data lives in
         // js/data/templates/topdown.data.js.
@@ -45,7 +45,7 @@ window.RealotTemplates = [
         id: 'flappy-bird',
         name: 'Flappy Bird',
         icon: 'bird',
-        description: 'Complete flap-to-fly clone: state machine, scoring, and juice, commented for beginners.',
+        description: 'Tap or press Space to flap through gaps between pipes. Score a point for every pipe you pass and try to beat your best.',
         // Same real-project-seeding pattern as 'platformer' above — see
         // its comment for the full explanation.
         hasBundledData: true,
@@ -55,7 +55,7 @@ window.RealotTemplates = [
         id: 'sky-jumper',
         name: 'Sky Jumper',
         icon: 'cloud',
-        description: 'Endless cloud-hopping jumper: bouncy platforms, collectible stars, climbing camera, and jump SFX.',
+        description: 'Doodle-style climber: bounce from cloud to cloud, grab stars, and climb as high as you can. Fall off the bottom and you start over.',
         // Same real-project-seeding pattern as 'platformer' above — see
         // its comment for the full explanation. Data lives in
         // js/data/templates/sky-jumper.data.js.
@@ -66,7 +66,7 @@ window.RealotTemplates = [
         id: 'physics-sandbox',
         name: 'Physics Sandbox',
         icon: 'shapes',
-        description: 'Rapier2D bodies, colliders, and joints pre-wired for rapid prototyping.',
+        description: 'A physics toy box: swing a wrecking ball into a crate pyramid, drag and fling crates, and launch them off the green pad.',
         // Same real-project-seeding pattern as 'platformer' above — see
         // its comment for the full explanation.
         hasBundledData: true,
